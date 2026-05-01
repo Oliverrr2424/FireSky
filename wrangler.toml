@@ -1,0 +1,7 @@
+name = "fire-sky-now"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-04-30"
+
+[[kv_namespaces]]
+binding = "FIRESKY_CACHE"
+id = "dc605f9c3d0b4e429709b17dd91e802a"

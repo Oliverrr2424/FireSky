@@ -1,0 +1,198 @@
+const CACHE_VERSION = 'v4';
+const FRESH_TTL_SECONDS = 90 * 60;
+const STALE_TTL_SECONDS = 6 * 60 * 60;
+const GEOCODE_FRESH_TTL_SECONDS = 7 * 24 * 60 * 60;
+const GEOCODE_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
+const REQUEST_TIMEOUT_MS = 12000;
+const GRID_STEPS = 15;
+
+const WEATHER_VARS = [
+  'cloud_cover',
+  'cloud_cover_low',
+  'cloud_cover_mid',
+  'cloud_cover_high',
+  'relative_humidity_2m',
+  'precipitation_probability',
+  'precipitation',
+  'visibility',
+  'wind_speed_10m',
+  'wind_gusts_10m',
+  'weather_code',
+  'cape',
+  'shortwave_radiation',
+  'direct_radiation',
+  'diffuse_radiation',
+  'direct_normal_irradiance',
+  'sunshine_duration',
+  'vapour_pressure_deficit'
+].join(',');
+
+const DAILY_VARS = 'sunrise,sunset,uv_index_max,precipitation_probability_max';
+const AIR_VARS = 'us_aqi,pm2_5,pm10,aerosol_optical_depth,dust';
+
+export function jsonResponse(value, init = {}) {
+  return new Response(JSON.stringify(value), {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'public, max-age=60',
+      ...(init.headers ?? {})
+    }
+  });
+}
+
+export function errorResponse(message, status = 500) {
+  return jsonResponse({ error: message }, { status, headers: { 'Cache-Control': 'no-store' } });
+}
+
+export function getCache(env) {
+  return env.FIRESKY_CACHE ?? null;
+}
+
+export function readLatLon(request) {
+  const url = new URL(request.url);
+  const latitude = Number(url.searchParams.get('lat'));
+  const longitude = Number(url.searchParams.get('lon'));
+
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    throw new Response('Invalid latitude', { status: 400 });
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new Response('Invalid longitude', { status: 400 });
+  }
+
+  return {
+    latitude: +latitude.toFixed(4),
+    longitude: +longitude.toFixed(4),
+    cacheLatitude: latitude.toFixed(3),
+    cacheLongitude: longitude.toFixed(3)
+  };
+}
+
+export function cacheKey(prefix, latitude, longitude) {
+  return `firesky:${CACHE_VERSION}:${prefix}:${latitude}:${longitude}`;
+}
+
+export function textCacheKey(prefix, value) {
+  return `firesky:${CACHE_VERSION}:${prefix}:${String(value).trim().toLowerCase()}`;
+}
+
+export async function cachedJson(env, key, fetcher, options = {}) {
+  const cache = getCache(env);
+  const freshTtl = options.freshTtl ?? FRESH_TTL_SECONDS;
+  const staleTtl = options.staleTtl ?? STALE_TTL_SECONDS;
+  const now = Date.now();
+
+  const cached = cache ? await cache.get(key, 'json') : null;
+  if (cached?.timestamp && now - cached.timestamp <= freshTtl * 1000) {
+    return { value: cached.value, cacheStatus: 'hit' };
+  }
+
+  try {
+    const value = await fetcher();
+    if (cache) {
+      await cache.put(key, JSON.stringify({ timestamp: now, value }), {
+        expirationTtl: staleTtl
+      });
+    }
+    return { value, cacheStatus: cached ? 'refresh' : 'miss' };
+  } catch (err) {
+    if (cached?.value && now - cached.timestamp <= staleTtl * 1000) {
+      return { value: cached.value, cacheStatus: 'stale' };
+    }
+    throw err;
+  }
+}
+
+export async function fetchOpenMeteoJson(url, label) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' }
+    });
+    if (!response.ok) {
+      const retryAfter = response.headers.get('Retry-After');
+      const suffix = retryAfter ? `; retry after ${retryAfter}s` : '';
+      throw new Error(`${label} request failed (${response.status}${suffix})`);
+    }
+    return response.json();
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error(`${label} request timed out`);
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function makeForecastUrl(place) {
+  const params = new URLSearchParams({
+    latitude: String(place.latitude),
+    longitude: String(place.longitude),
+    hourly: WEATHER_VARS,
+    daily: DAILY_VARS,
+    current: 'temperature_2m,relative_humidity_2m,cloud_cover,weather_code,wind_speed_10m',
+    forecast_days: '1',
+    timezone: 'auto',
+    wind_speed_unit: 'kmh'
+  });
+  return `https://api.open-meteo.com/v1/forecast?${params}`;
+}
+
+export function makeAirUrl(place) {
+  const params = new URLSearchParams({
+    latitude: String(place.latitude),
+    longitude: String(place.longitude),
+    hourly: AIR_VARS,
+    current: 'us_aqi,pm2_5,pm10,aerosol_optical_depth,dust',
+    forecast_days: '1',
+    timezone: 'auto'
+  });
+  return `https://air-quality-api.open-meteo.com/v1/air-quality?${params}`;
+}
+
+function evenlySpacedOffsets(min, max, steps) {
+  return Array.from({ length: steps }, (_, index) => +(min + ((max - min) * index) / (steps - 1)).toFixed(4));
+}
+
+export function createGridPlaces(place) {
+  const latSteps = evenlySpacedOffsets(-1.1, 1.1, GRID_STEPS);
+  const lonSteps = evenlySpacedOffsets(-1.45, 1.45, GRID_STEPS);
+  return latSteps.flatMap((latOffset) => lonSteps.map((lonOffset) => ({
+    latitude: +(place.latitude + latOffset).toFixed(4),
+    longitude: +(place.longitude + lonOffset).toFixed(4)
+  })));
+}
+
+export function makeGridUrl(place) {
+  const samples = createGridPlaces(place);
+  const params = new URLSearchParams({
+    latitude: samples.map((sample) => sample.latitude).join(','),
+    longitude: samples.map((sample) => sample.longitude).join(','),
+    hourly: WEATHER_VARS,
+    daily: DAILY_VARS,
+    forecast_days: '1',
+    timezone: 'auto',
+    wind_speed_unit: 'kmh'
+  });
+  return `https://api.open-meteo.com/v1/forecast?${params}`;
+}
+
+export function makeGeocodeUrl(query) {
+  const params = new URLSearchParams({
+    name: query,
+    count: '6',
+    language: 'zh',
+    format: 'json'
+  });
+  return `https://geocoding-api.open-meteo.com/v1/search?${params}`;
+}
+
+export const ttl = {
+  fresh: FRESH_TTL_SECONDS,
+  stale: STALE_TTL_SECONDS,
+  geocodeFresh: GEOCODE_FRESH_TTL_SECONDS,
+  geocodeStale: GEOCODE_STALE_TTL_SECONDS
+};
