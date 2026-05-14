@@ -3,6 +3,9 @@ dist/
 .vite/
 *.local
 
+# Lockfile omitted: cross-platform optional deps cause npm ci mismatch on CI
+package-lock.json
+
 # Local logs
 *.log
 
