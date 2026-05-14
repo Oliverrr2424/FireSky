@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+<title>晚霞分析与记录 | Rosy Cloud Analysis and Recording</title>
+
+    <meta name="description" content="火烧云分析数据可视化网站，提供全国主要城市的基于美国NCEP-GFS数值模式和欧洲CAMS大气组分模式的火烧云分析结果">
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/dark_custom.css" type="text/css">
+    <link rel="shortcut icon" href="/static/media/static_image/favicon.ico" type="image/icon">
+    <meta name="keywords" content="Evening Glow, Sunset, Sunrise, Cloud, Weather">
+</head>
+
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark custom-nav-bg-dark">
+        <div class="container-fluid">
+
+            <!-- 网站logo -->
+            
+            <a class="navbar-brand" href="/admin/login/">
+                <img src="/static/media/eveningGlow2021.jpg" alt="logo" style="height: 50px; width: 50px; border-radius: 5px;">
+            </a>
+            
+
+            <!-- 标题 -->
+            <span class="navbar-text me-3 nav-title" style="font-size: 1.75rem; font-weight: bold; color: #f5eec9;">
+                火烧云分析与记录
+            </span>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <!-- 导航栏 -->
+              <!-- 获取当前路由的端点 -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto" style="font-size: 1.2rem; gap: 1rem;">
+                    <li class="nav-item">
+                        <a class="nav-link " href="/">主页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/detailed/">详情页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/map/">地图</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/camera/">摄像头</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/record/">记录</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/reanalysis/">准确率</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/knowledge/">知识</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/about//">关于</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 内容区域 -->
+    
+    <!-- 内容区域 -->
+    <div class="container-fluid mt-5">
+        <div class="row">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <a href=".">
+                        <img src="../../static/media/static_image/front/rec2022in.jpg" class="card-img-top" alt="2022">
+                    </a>
+                    <div class="card-body">
+                        <h3 class="card-title fw-bold year-title-h3">2022年记录</h3>
+                        <p class="card-text">烈焰 ● 密卷云，积云<br>2022-07-04 | 日出 | 陆家嘴 <br> 记录者: <a href="https://v.douyin.com/ZA2W6sBaoXc/ 3@2.com :2pm"> &copy;航拍摄影家泡泡</a> </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 时间分布 -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body card-body-rounded">
+                        <h5 class="card-title fw-bold">时间分布</h5>
+                        <p class="card-text">总体上来看，2022年是火烧云较为丰富的一年，在统计的时间里一共出现了值得记录的火烧云65次。夏季是2022年中出现火烧云最多的季节，6、7、8三个月的火烧云占据了全年的60.0%，且出现了不少令人印象深刻的火烧云。秋季火烧云也十分充足，占比为40.0%，冬季（12月）出现火烧云占比例(0.0%)。(注：这里季节是按照月份划分的，不考虑实际的季节长度)</p>
+                        <p class="card-text">2022年上海的火烧云在朝霞和晚霞上几乎没有特别的偏好，朝霞和晚霞出现频次差不多，其中记录到的晚霞略微多一点点。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 月份图表 -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body card-body-rounded">
+                        <div id="month_chart" style="height: 500px"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 周内频次 -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body card-body-rounded">
+                        <p class="card-text">火烧云的出现和星期几基本没有关系的。从周一到周日，火烧云的出现概率一般是比较平衡，但也存在多项分布的波动。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 周内频次图表 -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body card-body-rounded">
+                        <div id="week_chart" style="height: 500px"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 火烧云质量 -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body card-body-rounded">
+                        <p class="card-text">火烧云按照天统计的质量如下图所示。质量是主观的，将每天朝霞与晚霞加和得到每天的火烧云质量。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 火烧云质量图表 -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body card-body-rounded">
+                        <div id="cloud_quality" style="height: 290px"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 云的类型 -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body card-body-rounded">
+                        <h5 class="card-title fw-bold">云的类型</h5>
+                        <p class="card-text">2022年上海出现的火烧云中，中云和高云占据了绝大多数，其中出现高积云、卷云和卷层云是最为常见的火烧云情况。中云和高云共同出现的更加复杂的火烧云情况也占有相当大的比例。</p>
+                        <p class="card-text">而涉及了厚度较大的云或者高度较低的云的火烧云则相对少见（例如积雨云、层积云、高积云）。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 云的类型图表 -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body card-body-rounded">
+                        <div id="cloud_doughnut" style="height: 600px"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- 页脚 -->
+    <footer class="footer-custom-dark text-white mt-4">
+        <div class="container py-4">
+            <div class="row">
+                <div class="col text-center">
+                    <p><b>火烧云预测与记录</b><br><b>Copyright &copy;sunsetbot team</b>. All Rights Reserved.</p>
+                </div>
+                <div class="col text-center">
+                    <p>最近一次编辑日期：2025-03-15 16:00:31<br><a target="_blank" href="https://beian.miit.gov.cn/" class="text-white">沪ICP备2023021092号</a></p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- 引入 Bootstrap JS 和依赖 -->
+    <script src="/static/js/lib/popper.min.js"></script>
+    <script src="/static/js/lib/bootstrap.min.js"></script>
+
+    <!-- 自定义JS -->
+    
+    <!-- ECharts 脚本 -->
+    <script src="/static/js/lib/echarts.min.js"></script>
+    <script src="/static/js/lib/jquery-2.1.4.min.js"></script>
+
+    <!-- 月份图表脚本 -->
+    <script type="text/javascript">
+        var dom1 = document.getElementById('month_chart');
+        var myChart1 = echarts.init(dom1, null, {
+            renderer: 'canvas',
+            useDirtyRect: false
+        });
+        var app = {};
+        var option1;
+        var ds = [0, 0, 0, 0, 0, 3, 9, 12, 9, 2, 1, 0];
+
+        option1 = {
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: {
+                    type: 'shadow'
+                }
+            },
+            title: {
+                text: '火烧云按月份频次',
+                textStyle: { color: '#FFF', fontSize: 20 },
+                textAlign: 'auto',
+                subtext: 'Rosy Cloud Monthly Occurrence',
+                subtextStyle: { color: '#BBB' },
+            },
+            color: ['rgba(130, 224, 170, 0.8)', 'rgba(93, 173, 226, 0.8)'],
+            legend: {
+                textStyle: { fontSize: 16, color: '#BBB' },
+            },
+            grid: {
+                left: '5%',
+                right: '5%',
+                bottom: '5%',
+                top: '15%',
+                containLabel: true
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: { fontSize: 16, color: '#BBB' },
+            },
+            xAxis: {
+                type: 'category',
+                data: ['-', '-', '-', '-', '-', '6月*', '7月', '8月', '9月', '10月', '11月', '12月'],
+                axisLabel: { fontSize: 16, color: '#BBB' },
+            },
+            series: [
+                {
+                    name: '日落',
+                    type: 'bar',
+                    stack: 'total',
+                    emphasis: { focus: 'series' },
+                    data: ds,
+                },
+                {
+                    name: '日出',
+                    type: 'bar',
+                    stack: 'total',
+                    emphasis: { focus: 'series' },
+                    data: [0, 0, 0, 0, 0, 2, 6, 7, 8, 4, 2, 0],
+                },
+            ]
+        };
+
+        if (option1 && typeof option1 === 'object') {
+            myChart1.setOption(option1);
+        }
+
+        window.addEventListener('resize', myChart1.resize);
+    </script>
+
+    <!-- 周内频次图表脚本 -->
+    <script type="text/javascript">
+        var dom2 = document.getElementById('week_chart');
+        var myChart2 = echarts.init(dom2, null, {
+            renderer: 'canvas',
+            useDirtyRect: false
+        });
+        var app = {};
+        var option2;
+
+        option2 = {
+            title: {
+                text: '火烧云周内频次',
+                textStyle: { color: '#FFF', fontSize: 20 },
+                textAlign: 'auto',
+                subtext: 'Rosy Cloud Occurrence in terms of day in week',
+                subtextStyle: { color: '#BBB' },
+            },
+            color: 'rgba(255, 255, 255, 0.80)',
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' },
+                formatter: function (params) {
+                    var tar = params[0];
+                    return tar.name + ' : ' + tar.value + '次';
+                }
+            },
+            grid: {
+                left: '5%',
+                right: '5%',
+                bottom: '5%',
+                top: '15%',
+                containLabel: true
+            },
+            xAxis: {
+                type: 'category',
+                name: '星期',
+                data: ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'],
+                axisLabel: { fontSize: 16, color: '#BBB' },
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: { fontSize: 16, color: '#BBB' },
+            },
+            series: [
+                {
+                    data: [12, 5, 12, 9, 8, 9, 10],
+                    type: 'bar',
+                    style: { color: 'rgba(255,255,255,1)', borderColor: 'rgba(255,255,255,1)', borderWidth: 1 },
+                }
+            ]
+        };
+
+        if (option2 && typeof option2 === 'object') {
+            myChart2.setOption(option2);
+        }
+        window.addEventListener('resize', myChart2.resize);
+    </script>
+
+    <!-- 火烧云质量图表脚本 -->
+    <script type="text/javascript">
+        var dom3 = document.getElementById('cloud_quality');
+        var myChart3 = echarts.init(dom3, null, {
+            renderer: 'canvas',
+            useDirtyRect: false
+        });
+        var app = {};
+        var option3;
+
+        option3 = {
+            title: {
+                text: '火烧云质量日历',
+                textStyle: { color: '#FFF', fontSize: 20 },
+                textAlign: 'auto',
+                subtext: 'Rosy Cloud Calendar',
+                subtextStyle: { color: '#BBB' },
+            },
+            color: 'rgba(255, 255, 255, 0.99)',
+            tooltip: {
+                trigger: 'item',
+                formatter: function (params) {
+                    var tar = params;
+                    return tar.value[0] + ": Quality=" + tar.value[1];
+                }
+            },
+            visualMap: {
+                min: 0,
+                max: 10,
+                type: 'continuous',
+                orient: 'horizontal',
+                left: 'center',
+                bottom: 10,
+                itemHeight: 300,
+                textStyle: { color: '#BBB' },
+            },
+            calendar: {
+                top: 90,
+                left: 30,
+                right: 30,
+                bottom: 60,
+                cellSize: ['auto', 30],
+                range: '2022',
+                itemStyle: { borderWidth: 0.5 },
+                monthLabel: { color: '#BBB' },
+                dayLabel: { color: '#BBB' },
+            },
+            series: {
+                type: 'heatmap',
+                name: 'Quality Sum',
+                coordinateSystem: 'calendar',
+                data: [['2022-01-01', 0], ['2022-01-02', 0], ['2022-01-03', 0], ['2022-01-04', 0], ['2022-01-05', 0], ['2022-01-06', 0], ['2022-01-07', 0], ['2022-01-08', 0], ['2022-01-09', 0], ['2022-01-10', 0], ['2022-01-11', 0], ['2022-01-12', 0], ['2022-01-13', 0], ['2022-01-14', 0], ['2022-01-15', 0], ['2022-01-16', 0], ['2022-01-17', 0], ['2022-01-18', 0], ['2022-01-19', 0], ['2022-01-20', 0], ['2022-01-21', 0], ['2022-01-22', 0], ['2022-01-23', 0], ['2022-01-24', 0], ['2022-01-25', 0], ['2022-01-26', 0], ['2022-01-27', 0], ['2022-01-28', 0], ['2022-01-29', 0], ['2022-01-30', 0], ['2022-01-31', 0], ['2022-02-01', 0], ['2022-02-02', 0], ['2022-02-03', 0], ['2022-02-04', 0], ['2022-02-05', 0], ['2022-02-06', 0], ['2022-02-07', 0], ['2022-02-08', 0], ['2022-02-09', 0], ['2022-02-10', 0], ['2022-02-11', 0], ['2022-02-12', 0], ['2022-02-13', 0], ['2022-02-14', 0], ['2022-02-15', 0], ['2022-02-16', 0], ['2022-02-17', 0], ['2022-02-18', 0], ['2022-02-19', 0], ['2022-02-20', 0], ['2022-02-21', 0], ['2022-02-22', 0], ['2022-02-23', 0], ['2022-02-24', 0], ['2022-02-25', 0], ['2022-02-26', 0], ['2022-02-27', 0], ['2022-02-28', 0], ['2022-03-01', 0], ['2022-03-02', 0], ['2022-03-03', 0], ['2022-03-04', 0], ['2022-03-05', 0], ['2022-03-06', 0], ['2022-03-07', 0], ['2022-03-08', 0], ['2022-03-09', 0], ['2022-03-10', 0], ['2022-03-11', 0], ['2022-03-12', 0], ['2022-03-13', 0], ['2022-03-14', 0], ['2022-03-15', 0], ['2022-03-16', 0], ['2022-03-17', 0], ['2022-03-18', 0], ['2022-03-19', 0], ['2022-03-20', 0], ['2022-03-21', 0], ['2022-03-22', 0], ['2022-03-23', 0], ['2022-03-24', 0], ['2022-03-25', 0], ['2022-03-26', 0], ['2022-03-27', 0], ['2022-03-28', 0], ['2022-03-29', 0], ['2022-03-30', 0], ['2022-03-31', 0], ['2022-04-01', 0], ['2022-04-02', 0], ['2022-04-03', 0], ['2022-04-04', 0], ['2022-04-05', 0], ['2022-04-06', 0], ['2022-04-07', 0], ['2022-04-08', 0], ['2022-04-09', 0], ['2022-04-10', 0], ['2022-04-11', 0], ['2022-04-12', 0], ['2022-04-13', 0], ['2022-04-14', 0], ['2022-04-15', 0], ['2022-04-16', 0], ['2022-04-17', 0], ['2022-04-18', 0], ['2022-04-19', 0], ['2022-04-20', 0], ['2022-04-21', 0], ['2022-04-22', 0], ['2022-04-23', 0], ['2022-04-24', 0], ['2022-04-25', 0], ['2022-04-26', 0], ['2022-04-27', 0], ['2022-04-28', 0], ['2022-04-29', 0], ['2022-04-30', 0], ['2022-05-01', 0], ['2022-05-02', 0], ['2022-05-03', 0], ['2022-05-04', 0], ['2022-05-05', 0], ['2022-05-06', 0], ['2022-05-07', 0], ['2022-05-08', 0], ['2022-05-09', 0], ['2022-05-10', 0], ['2022-05-11', 0], ['2022-05-12', 0], ['2022-05-13', 0], ['2022-05-14', 0], ['2022-05-15', 0], ['2022-05-16', 0], ['2022-05-17', 0], ['2022-05-18', 0], ['2022-05-19', 0], ['2022-05-20', 0], ['2022-05-21', 0], ['2022-05-22', 0], ['2022-05-23', 0], ['2022-05-24', 0], ['2022-05-25', 0], ['2022-05-26', 0], ['2022-05-27', 0], ['2022-05-28', 0], ['2022-05-29', 0], ['2022-05-30', 0], ['2022-05-31', 0], ['2022-06-01', 0], ['2022-06-02', 0], ['2022-06-03', 0], ['2022-06-04', 0], ['2022-06-05', 0], ['2022-06-06', 0], ['2022-06-07', 0], ['2022-06-08', 0], ['2022-06-09', 0], ['2022-06-10', 0], ['2022-06-11', 0], ['2022-06-12', 0], ['2022-06-13', 0], ['2022-06-14', 0], ['2022-06-15', 0], ['2022-06-16', 0], ['2022-06-17', 0], ['2022-06-18', 0], ['2022-06-19', 0], ['2022-06-20', 0], ['2022-06-21', 0], ['2022-06-22', 0], ['2022-06-23', 0], ['2022-06-24', 5.0], ['2022-06-25', 0], ['2022-06-26', 0], ['2022-06-27', 0], ['2022-06-28', 7.0], ['2022-06-29', 2.0], ['2022-06-30', 5.0], ['2022-07-01', 5.0], ['2022-07-02', 0], ['2022-07-03', 5.0], ['2022-07-04', 5.0], ['2022-07-05', 0], ['2022-07-06', 9.0], ['2022-07-07', 0], ['2022-07-08', 5.0], ['2022-07-09', 2.0], ['2022-07-10', 0], ['2022-07-11', 0], ['2022-07-12', 4.0], ['2022-07-13', 4.0], ['2022-07-14', 2.0], ['2022-07-15', 0], ['2022-07-16', 0], ['2022-07-17', 0], ['2022-07-18', 0], ['2022-07-19', 0], ['2022-07-20', 3.0], ['2022-07-21', 2.0], ['2022-07-22', 0], ['2022-07-23', 5.0], ['2022-07-24', 0], ['2022-07-25', 0], ['2022-07-26', 3.0], ['2022-07-27', 0], ['2022-07-28', 0], ['2022-07-29', 0], ['2022-07-30', 3.0], ['2022-07-31', 0], ['2022-08-01', 0], ['2022-08-02', 0], ['2022-08-03', 0], ['2022-08-04', 0], ['2022-08-05', 0], ['2022-08-06', 0], ['2022-08-07', 4.0], ['2022-08-08', 0], ['2022-08-09', 5.0], ['2022-08-10', 7.0], ['2022-08-11', 4.0], ['2022-08-12', 5.0], ['2022-08-13', 5.0], ['2022-08-14', 6.0], ['2022-08-15', 8.0], ['2022-08-16', 3.0], ['2022-08-17', 0], ['2022-08-18', 0], ['2022-08-19', 0], ['2022-08-20', 5.0], ['2022-08-21', 0], ['2022-08-22', 0], ['2022-08-23', 7.0], ['2022-08-24', 0], ['2022-08-25', 0], ['2022-08-26', 0], ['2022-08-27', 0], ['2022-08-28', 5.0], ['2022-08-29', 3.0], ['2022-08-30', 3.0], ['2022-08-31', 0], ['2022-09-01', 4.0], ['2022-09-02', 0], ['2022-09-03', 0], ['2022-09-04', 0], ['2022-09-05', 1.0], ['2022-09-06', 0], ['2022-09-07', 0], ['2022-09-08', 3.0], ['2022-09-09', 9.0], ['2022-09-10', 6.0], ['2022-09-11', 7.0], ['2022-09-12', 0], ['2022-09-13', 0], ['2022-09-14', 0], ['2022-09-15', 0], ['2022-09-16', 0], ['2022-09-17', 0], ['2022-09-18', 0], ['2022-09-19', 0], ['2022-09-20', 3.0], ['2022-09-21', 9.0], ['2022-09-22', 0], ['2022-09-23', 3.0], ['2022-09-24', 5.0], ['2022-09-25', 4.0], ['2022-09-26', 0], ['2022-09-27', 0], ['2022-09-28', 0], ['2022-09-29', 3.0], ['2022-09-30', 0], ['2022-10-01', 0], ['2022-10-02', 0], ['2022-10-03', 0], ['2022-10-04', 3.0], ['2022-10-05', 0], ['2022-10-06', 0], ['2022-10-07', 0], ['2022-10-08', 0], ['2022-10-09', 0], ['2022-10-10', 0], ['2022-10-11', 5.0], ['2022-10-12', 0], ['2022-10-13', 0], ['2022-10-14', 0], ['2022-10-15', 0], ['2022-10-16', 0], ['2022-10-17', 0], ['2022-10-18', 0], ['2022-10-19', 0], ['2022-10-20', 4.0], ['2022-10-21', 7.0], ['2022-10-22', 0], ['2022-10-23', 0], ['2022-10-24', 0], ['2022-10-25', 0], ['2022-10-26', 0], ['2022-10-27', 0], ['2022-10-28', 0], ['2022-10-29', 3.0], ['2022-10-30', 0], ['2022-10-31', 0], ['2022-11-01', 0], ['2022-11-02', 0], ['2022-11-03', 0], ['2022-11-04', 0], ['2022-11-05', 0], ['2022-11-06', 5.0], ['2022-11-07', 0], ['2022-11-08', 0], ['2022-11-09', 0], ['2022-11-10', 0], ['2022-11-11', 0], ['2022-11-12', 0], ['2022-11-13', 0], ['2022-11-14', 0], ['2022-11-15', 0], ['2022-11-16', 0], ['2022-11-17', 0], ['2022-11-18', 0], ['2022-11-19', 0], ['2022-11-20', 0], ['2022-11-21', 0], ['2022-11-22', 0], ['2022-11-23', 0], ['2022-11-24', 0], ['2022-11-25', 0], ['2022-11-26', 0], ['2022-11-27', 8.0], ['2022-11-28', 0], ['2022-11-29', 0], ['2022-11-30', 0], ['2022-12-01', 0], ['2022-12-02', 0], ['2022-12-03', 0], ['2022-12-04', 0], ['2022-12-05', 0], ['2022-12-06', 0], ['2022-12-07', 0], ['2022-12-08', 0], ['2022-12-09', 0], ['2022-12-10', 0], ['2022-12-11', 0], ['2022-12-12', 0], ['2022-12-13', 0], ['2022-12-14', 0], ['2022-12-15', 0], ['2022-12-16', 0], ['2022-12-17', 0], ['2022-12-18', 0], ['2022-12-19', 0], ['2022-12-20', 0], ['2022-12-21', 0], ['2022-12-22', 0], ['2022-12-23', 0], ['2022-12-24', 0], ['2022-12-25', 0], ['2022-12-26', 0], ['2022-12-27', 0], ['2022-12-28', 0], ['2022-12-29', 0], ['2022-12-30', 0], ['2022-12-31', 0]],
+            }
+        };
+
+        if (option3 && typeof option3 === 'object') {
+            myChart3.setOption(option3);
+        }
+        window.addEventListener('resize', myChart3.resize);
+    </script>
+
+    <!-- 云的类型图表脚本 -->
+    <script type="text/javascript">
+        var dom4 = document.getElementById('cloud_doughnut');
+        var myChart4 = echarts.init(dom4, null, {
+            renderer: 'canvas',
+            useDirtyRect: false
+        });
+        var app = {};
+        var option4;
+
+        option4 = {
+            title: {
+                text: '火烧云种类频次饼状图',
+                textStyle: { color: '#FFF', fontSize: 20 },
+                subtext: 'Rosy Cloud^2 Genera Occurrence',
+                subtextStyle: { color: '#BBB' },
+                left: 'left',
+            },
+            color: ['#A2878B', '#D0695F', '#C5E0B4', '#A9D18F', '#AAC5C8', '#8EC26A', '#AEA885', '#8EB6A3', '#E8C944', '#7295D4', '#8FAADC'],
+            tooltip: { trigger: 'item' },
+            legend: {
+                orient: 'vertical',
+                left: 'right',
+                textStyle: { color: '#BBB' },
+            },
+            series: [
+                {
+                    name: 'Cloud Genera',
+                    type: 'pie',
+                    radius: '60%',
+                    data: [
+                        { value: 2, name: '云砧' },
+                        { value: 1, name: '云砧,积雨云' },
+                        { value: 17, name: '卷云' },
+                        { value: 2, name: '卷云,卷层云' },
+                        { value: 10, name: '卷云,高积云' },
+                        { value: 10, name: '卷层云' },
+                        { value: 1, name: '卷层云,浓积云,高积云' },
+                        { value: 4, name: '卷层云,高积云' },
+                        { value: 2, name: '层积云' },
+                        { value: 1, name: '高层云,高积云' },
+                        { value: 15, name: '高积云' },
+                        
+                    ],
+                    center: ['30%', '50%'],
+                    emphasis: {
+                        itemStyle: {
+                            shadowBlur: 10,
+                            shadowOffsetX: 0,
+                            shadowColor: 'rgba(255, 255, 255, 0.5)'
+                        }
+                    }
+                }
+            ]
+        };
+
+        if (option4 && typeof option4 === 'object') {
+            myChart4.setOption(option4);
+        }
+        window.addEventListener('resize', myChart4.resize);
+    </script>
+
+</body>
+
+</html>

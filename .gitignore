@@ -2,3 +2,18 @@ node_modules/
 dist/
 .vite/
 *.local
+
+# Local logs
+*.log
+
+# Cloudflare Wrangler local state
+.wrangler/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Large local datasets (not for VCS)
+data_sources/modeling/
+data_sources/modeling_v2/
+data_sources/raw/

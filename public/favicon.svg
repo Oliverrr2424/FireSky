@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FireSky Now">
+  <defs>
+    <linearGradient id="sky" x1="88" y1="40" x2="424" y2="472" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#77c7ff"/>
+      <stop offset="0.48" stop-color="#3e83d4"/>
+      <stop offset="1" stop-color="#15264f"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="164" y1="96" x2="352" y2="304" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff4a8"/>
+      <stop offset="0.48" stop-color="#ffb34d"/>
+      <stop offset="1" stop-color="#f05a4f"/>
+    </linearGradient>
+    <linearGradient id="fire" x1="100" y1="318" x2="414" y2="318" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd45c"/>
+      <stop offset="0.5" stop-color="#ff7b4a"/>
+      <stop offset="1" stop-color="#c83c64"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#06162f" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#sky)"/>
+  <path d="M92 330c66-62 133-82 196-55 48 20 83 14 132-21" fill="none" stroke="url(#fire)" stroke-width="28" stroke-linecap="round" opacity="0.92"/>
+  <circle cx="252" cy="202" r="104" fill="url(#sun)" filter="url(#soft)"/>
+  <path d="M154 311c0-40 32-72 72-72 12 0 24 3 34 9 18-32 52-53 91-53 58 0 105 47 105 105 0 8-1 16-3 24H166c-8 0-12-5-12-13Z" fill="#edf8ff" opacity="0.92"/>
+  <path d="M76 382h360" stroke="#d9f2ff" stroke-width="28" stroke-linecap="round" opacity="0.55"/>
+  <path d="M116 421h280" stroke="#ffffff" stroke-width="20" stroke-linecap="round" opacity="0.45"/>
+</svg>

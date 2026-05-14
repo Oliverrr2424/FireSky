@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+<title xmlns="http://www.w3.org/1999/html">晚霞分析与记录 | Rosy Cloud Analysis and Recording</title>
+
+    <meta name="description" content="火烧云分析数据可视化网站，提供全国主要城市的基于美国NCEP-GFS数值模式和欧洲CAMS大气组分模式的火烧云分析结果">
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/dark_custom.css" type="text/css">
+    <link rel="shortcut icon" href="/static/media/static_image/favicon.ico" type="image/icon">
+    <meta name="keywords" content="Evening Glow, Sunset, Sunrise, Cloud, Weather">
+</head>
+
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark custom-nav-bg-dark">
+        <div class="container-fluid">
+
+            <!-- 网站logo -->
+            
+            <a class="navbar-brand" href="/admin/login/">
+                <img src="/static/media/eveningGlow2021.jpg" alt="logo" style="height: 50px; width: 50px; border-radius: 5px;">
+            </a>
+            
+
+            <!-- 标题 -->
+            <span class="navbar-text me-3 nav-title" style="font-size: 1.75rem; font-weight: bold; color: #f5eec9;">
+                火烧云分析与记录
+            </span>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <!-- 导航栏 -->
+              <!-- 获取当前路由的端点 -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto" style="font-size: 1.2rem; gap: 1rem;">
+                    <li class="nav-item">
+                        <a class="nav-link " href="/">主页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/detailed/">详情页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/map/">地图</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/camera/">摄像头</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/record/">记录</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/reanalysis/">准确率</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/knowledge/">知识</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/about//">关于</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 内容区域 -->
+    
+    <!-- 内容区域 -->
+    <div class="container-fluid mt-5">
+        <div class="row mt-4">
+            <div class="col-auto">
+                <div class="card bg-dark text-light">
+                    <div class="card-body card-body-rounded">
+                        <p class="card-text" style="font-size: 1.2rem;">火烧云分析用大气截面图（主要城市）。基于NCEP-GFS/ECMWF（云况信息）和 CAMS（霾分布）。GFS每天更新4次，大更新在7:30-8:30以及19:30-20:30，小更新（仅中东部、东北城市）出现在13:30和1:30。ECMWF 中东部每天也更新4次，分别在 4:00,10:00，16:00 和 22:00。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4 flex-nowrap">
+            <div class="col-auto">
+                <select class="form-select form-select-lg" id="event_selector">
+                    <option value="rise_1" >今天日出</option>
+                    <option value="set_1" selected>今天日落</option>
+                    <option value="rise_2" >明天日出</option>
+                    <option value="set_2" >明天日落</option>
+                </select>
+            </div>
+
+            <div class="col-auto">
+                <select class="form-select form-select-lg" id="model_selector">
+                    <option value="GFS">数据源: GFS</option>
+                    <option value="EC">数据源: EC</option>
+                </select>
+            </div>
+
+            <div class="col-auto d-flex gap-2">
+                <button class="btn btn-primary btn-lg" id="srch_btn">搜索</button>
+            </div>
+
+            <div class="col flex-grow-1 px-2"> <!-- px-2 添加左右内边距 -->
+                <input list="city_list" class="form-control form-control-lg" id="city_input" placeholder="上海,20260514,set,2026051318z" oninput="update_city_list();">
+                <datalist id="city_list"></datalist>
+            </div>
+
+            <div class="col-auto d-flex gap-2">
+                <button class="btn btn-custom-warning btn-lg" id="delete_btn">清除</button>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light ">
+                    <!-- 1. 卡片头部：展示核心信息 -->
+                    <div class="card-header border-secondary mt-0 mb-0">
+                        <h5 class="h5-card-header">
+                            <!-- 城市和事件名 -->
+                            <span class="fw-bold fs-3" id="display_city_name_event_name">上海市-上海 日落</span>
+                            <!-- 日期放在右边 -->
+                            <small class="float-end fw-bold fs-3" id="tb_event_time">2026-05-14 18:40:29</small>
+                        </h5>
+                    </div>
+
+                    <!-- 2. 卡片主体：使用无边框列表组展示详细数据 -->
+                    <div class="card-body p-2">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item border-secondary custom-li-dark text-light d-flex justify-content-between align-items-center ">
+                                <span class="fw-bold" id="display_times_name">中午时次</span>
+                                <span class="fs-5" id="display_times_str">2026051400z</span>
+                            </li>
+                            <li class="list-group-item border-secondary custom-li-dark text-light d-flex justify-content-between align-items-center">
+                                <span class="fw-bold">预报模型</span>
+                                <span class="fs-5" id="display_model">GFS</span>
+                            </li>
+                            <li class="list-group-item border-secondary custom-li-dark text-light d-flex justify-content-between align-items-center">
+                                <span class="fw-bold">鲜艳度</span>
+                                <span class="fs-5" id="tb_quality">0.001（微烧）</span>
+                            </li>
+                            <li class="list-group-item border-secondary custom-li-dark text-light d-flex justify-content-between align-items-center">
+                                <span class="fw-bold">气溶胶</span>
+                                <span class="fs-5" id="tb_aod">0.374（一般）</span>
+                            </li>
+                            <li class="list-group-item custom-li-dark text-light d-flex justify-content-between align-items-center">
+                                <span class="fw-bold">不确定性</span>
+                                <span class="text-muted">见专业版</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-4 mb-2 mb-md-0">
+                <button class="btn btn-custom-primary btn-lg w-100" onclick="location.href='/lab/'">全国悬日测试</button>
+            </div>
+            <div class="col-md-4 mb-2 mb-md-0">
+                <button class="btn btn-custom-primary btn-lg w-100" onclick="location.href='/'">省流版</button>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-custom-primary btn-lg w-100" id="custom_xsection" onclick="location.href='/image/cross_section/GFS_上海_20260514_set_2026051400z.jpg/'">大气截面</button>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card-header border-secondary">
+                    <h5 class="h5-card-header">趋势与分位数</h5>
+                </div>
+                <div class="card-body ">
+                    <div>
+                        <!-- 第一行 -->
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <div id="quality" class="chart-box" title="本地周边的火烧云鲜艳度指数分布(来自L与2L标准差的正态分布采样)" style="height: 400px; width: 100%;">
+
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div id="aod" class="chart-box" title="本地周边的同高度AOD分布(来自L与2L标准差的正态分布采样)" style="height: 400px; width: 100%;">
+
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div id="aod_quality" class="chart-box" title="AOD与鲜艳度的某种联合分布" style="height: 400px; width: 100%;">
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 第二行 -->
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div id="quality_trend" class="chart-box" title="本地火烧云预报指数变化趋势"  style="height: 400px; width: 100%;">
+
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div id="aod_trend" class="chart-box" title="本地气溶胶光学厚度变化趋势" style="height: 400px; width: 100%;">
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card-header border-secondary">
+                    <h5 class="h5-card-header">邻近地区的火烧云预报(点击复制到搜索栏)</h5>
+                    <h5 class="h5-card-header mt-2" style="font-size: 1.1rem; font-weight: 400;" id="proximate_city_name_header_display_model">当前选择的预报模式： GFS  2026051400z</h5>
+                    <h5 class="h5-card-header mt-2" style="font-size: 1.1rem; font-weight: 400;" id="proximate_city_name_header_event_name_cn">事件： 日落</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped fixed-table selectable-table" id="data-table">
+                            <colgroup>
+                                <col style="width: 10%;">
+                                <col style="width: 20%;">
+                                <col style="width: 37%;">
+                                <col style="width: 16%;">
+                                <col style="width: 17%;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th scope="col">序号</th>
+                                    <th scope="col">城市/地区</th>
+                                    <th scope="col">北京时间</th>
+                                    <th scope="col">质量</th>
+                                    <th scope="col">AOD</th>
+                                </tr>
+                            </thead>
+                            <tbody id="proximate-table-body">
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>1</td>
+                                    <td>嘉兴</td>
+                                    <td>2026-05-14 18:42:33</td>
+                                    <td>0.559</td>
+                                    <td>0.3</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>2</td>
+                                    <td>湖州</td>
+                                    <td>2026-05-14 18:45:15</td>
+                                    <td>0.346</td>
+                                    <td>0.295</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>3</td>
+                                    <td>常州</td>
+                                    <td>2026-05-14 18:47:35</td>
+                                    <td>0.099</td>
+                                    <td>0.355</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>4</td>
+                                    <td>苏州</td>
+                                    <td>2026-05-14 18:44:09</td>
+                                    <td>0.018</td>
+                                    <td>0.337</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>5</td>
+                                    <td>无锡</td>
+                                    <td>2026-05-14 18:45:54</td>
+                                    <td>0.011</td>
+                                    <td>0.348</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>6</td>
+                                    <td>南通</td>
+                                    <td>2026-05-14 18:44:30</td>
+                                    <td>0.0</td>
+                                    <td>0.425</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>7</td>
+                                    <td>上海</td>
+                                    <td>2026-05-14 18:40:29</td>
+                                    <td>0.0</td>
+                                    <td>0.374</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>8</td>
+                                    <td>杭州</td>
+                                    <td>2026-05-14 18:43:45</td>
+                                    <td>0.0</td>
+                                    <td>0.265</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>9</td>
+                                    <td>宁波</td>
+                                    <td>2026-05-14 18:37:36</td>
+                                    <td>0.0</td>
+                                    <td>0.297</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>10</td>
+                                    <td>绍兴</td>
+                                    <td>2026-05-14 18:41:46</td>
+                                    <td>0.0</td>
+                                    <td>0.239</td>
+                                </tr>
+                                
+                                <tr class="table-row-city-name-clickable">
+                                    <td>11</td>
+                                    <td>舟山</td>
+                                    <td>2026-05-14 18:35:31</td>
+                                    <td>0.0</td>
+                                    <td>0.311</td>
+                                </tr>
+                                
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-header border-secondary">
+                        <h5 class="h5-card-header">准确率（Disclaimer）</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- 新增的图片区块 -->
+                        <div class="row mb-4">
+
+                            <p class="card-text">火烧云预报结果仅供参考。以下图表为使用上海在2022.6.24-2023.12.30期间ERA-5再分析数据，根据当前算法统计的混淆矩阵。实际的 GFS 预测表现只会比这个更差，这是上限，可以感受一下。<br> ● 左图按预报结果归一化，表格是竖着看的，即当预报质量为 XXX 时，实际观测到的火烧云质量概率为：不烧 XXX%，微烧 XXX%，小烧 XXX% ... 等；<br> ● 右图按观测结果归一化，表格是横着看的，即当实际火烧云质量为 XXX 时，预报火烧云质量概率为：不烧 XXX%，微烧 XXX%，小烧 XXX% ... 等；</p>
+                            <div class="col-md-6 mb-3 mb-md-0">
+                                <div class="ratio ratio-1x1">
+                                    <img src="/static/media/static_image/CM_fcstnorm.jpg" alt="预报归一化" class="img-fluid rounded">
+                                </div>
+                                <p class="text-center mt-2">按预报结果归一化的混淆矩阵</p>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="ratio ratio-1x1">
+                                    <img src="/static/media/static_image/CM_realnorm.jpg" alt="真实归一化" class="img-fluid rounded">
+                                </div>
+                                <p class="text-center mt-2">按观测结果归一化的混淆矩阵</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-header border-secondary">
+                        <h5 class="h5-card-header">火烧云鲜艳度</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            火烧云的鲜艳度的计算会考虑以下几个方面因素：火烧云的持续时间、火烧云的亮度与颜色、火烧云的云量（包括格点云量、云相态与含水量）、火烧云占据本地天空的面积、云底高度、不同层次云层之间的照明与遮挡关系，以及气溶胶光学厚度/大气浑浊度（或者雾）<br>
+                            &emsp;- 0.001-0.05：微微烧，或者火烧云云况不典型没有预报出来；<br>
+                            &emsp;- 0.05~0.2：小烧，大气很通透的情况下才会比较好看；<br>
+                            &emsp;- 0.2~0.4：小烧到中等烧；<br>
+                            &emsp;- 0.4~0.6：中等烧，比较值得看的火烧云；<br>
+                            &emsp;- 0.6~0.8：中等烧到大烧程度的火烧云；<br>
+                            &emsp;- 0.8~1.0：不是很完美的大烧火烧云，例如云量没有最高、大气偏污、持续时间偏短、有低云遮挡等；<br>
+                            &emsp;- 1.0~1.5：典型的火烧云大烧；<br>
+                            &emsp;- 1.5~2.0：优质大烧，火烧云范围广、云量大（不一定满云量）、颜色明亮、持续时间长，且大气通透；<br>
+                            &emsp;- 2.0~2.5：世纪大烧，火烧云范围很广、接近满云量、颜色明亮鲜艳、持续时间长，且大气非常通透；
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-header border-secondary">
+                        <h5 class="h5-card-header">AOD（气溶胶光学厚度/天空浑浊度）</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            AOD（气溶胶光学厚度/天空浑浊度）表明了气溶胶颗粒在垂直方向对光线的遮挡和散射效果。当气溶胶光学厚度较大的时候，天空中的光线在到达地面前会被气溶胶明显散射和吸收，导致天空颜色的饱和度与亮度下降，使得天空看起来污浊。<br>
+                            &emsp;- 0.0~0.1：（如果天气晴朗）高级水晶天，多见于青藏高原；<br>
+                            &emsp;- 0.1~0.2：（如果天气晴朗）普通水晶天，天空湛蓝；<br>
+                            &emsp;- 0.2~0.3：（如果天气晴朗）不算水晶天但也有蓝天；<br>
+                            &emsp;- 0.3~0.4：普通的天空；<br>
+                            &emsp;- 0.4~0.6：天空看起来会有点污；<br>
+                            &emsp;- 0.6~0.8：天空会相当的污，地面附近可能有霾；<br>
+                            &emsp;- >0.8：非常污的天空，地面附近可能有比较重的霾；
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-header border-secondary">
+                        <h5 class="h5-card-header">支持我们</h5>
+                    </div>
+                    <div class="card-body">
+                        <iframe src="https://afdian.com/leaflet?slug=sunsetbot" width="100%" height="250" frameborder="0" class="custom-iframe"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 悬浮按钮 -->
+    <button title="翻车了?" class="float-button position-fixed bottom-0 start-0 m-3" onclick="location.href='https://www.wjx.cn/vm/tU8rXXw.aspx'">
+        <b>翻车了?</b>
+    </button>
+
+
+    <!-- 页脚 -->
+    <footer class="footer-custom-dark text-white mt-4">
+        <div class="container py-4">
+            <div class="row">
+                <div class="col text-center">
+                    <p><b>火烧云预测与记录</b><br><b>Copyright &copy;sunsetbot team</b>. All Rights Reserved.</p>
+                </div>
+                <div class="col text-center">
+                    <p>最近一次编辑日期：2025-03-15 16:00:31<br><a target="_blank" href="https://beian.miit.gov.cn/" class="text-white">沪ICP备2023021092号</a></p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- 引入 Bootstrap JS 和依赖 -->
+    <script src="/static/js/lib/popper.min.js"></script>
+    <script src="/static/js/lib/bootstrap.min.js"></script>
+
+    <!-- 自定义JS -->
+    
+<!-- 引入 Bootstrap JS 和依赖 -->
+<script type="text/javascript" src="/static/js/lib/echarts.min.js"></script>
+<script src="/static/js/lib/jquery-2.1.4.min.js"></script>
+<script type="text/javascript">
+    var d = new Date();
+    var second = d.getSeconds();
+    if (second == 0){new BugController({'minBugs':1, 'maxBugs':1, 'mouseOver':'flyoff'});}
+</script>
+<script type="text/javascript">
+	function rfa1d(fa, digits){
+		for(var i = 0; i < fa.length; i++) {fa[i] = fa[i].toFixed(digits);}
+		return fa;
+	}
+	function rfa2d(fa, digits) {
+		for(var i = 0; i < fa.length; i++){
+			for(var j = 0; j < fa[i].length; j++){
+				fa[i][j] = fa[i][j].toFixed(3);
+			}
+    	}
+    	return fa;
+	}
+
+	var quality_color_list =  ['rgba(255,255,220,0.01)', 'rgba(255,255,220,0.03)', 'rgba(255,255,220,0.05)', 'rgba(255,255,220,0.08)', 'rgba(255,255,220,0.12)'];
+	var aod_color_list =  ['rgba(255,255,220,0.12)', 'rgba(255,255,220,0.08)', 'rgba(255,255,220,0.05)', 'rgba(255,255,220,0.03)', 'rgba(255,255,220,0.01)'];
+
+    // aod list
+    var dom1 = document.getElementById('aod');
+    var ch1 = echarts.init(dom1, null, {renderer: 'canvas', useDirtyRect: false});
+    var opt1;
+    var aod_perc_s = [0, 0, 0, 0, 0];
+    var aod_perc_l = [0, 0, 0, 0, 0];
+    // fixed digits
+    aod_perc_s = rfa1d(aod_perc_s, 3);
+	aod_perc_l = rfa1d(aod_perc_l, 3);
+    var local_aod = 0.374.toFixed(3);
+
+	opt1 = {
+		backgroundColor: 'rgba(255,255,255,0.0)',
+		title: [
+			{
+			  	text: 'AOD 四分位数 (CAMS)',
+			  	textStyle: {color: '#FFF', fontSize: 18, },
+			  	subtext: 'AOD Spatial Distribution',
+			  	subtextStyle: {color: '#BBB',},
+			  	left: 'left'
+			},
+		],
+		color: ["#FFF", "#F00"],
+		tooltip: {
+			trigger: 'item',
+			axisPointer: { type: 'shadow' }
+		},
+		grid: {
+			left: '10%',
+			right: '5%',
+			bottom: '5%',
+			show: true,
+			borderColor: '#FFF'
+		},
+		xAxis: {
+			type: 'category',
+			boundaryGap: true,
+			data: ['AOD-25km', 'AOD-50km'],
+			axisLabel: { color: '#BBB', },
+			axisLine: { lineStyle: {color: '#FFF',},},
+			axisTick: { lineStyle: {color: '#FFF',},},
+			splitArea: { show: false },
+			splitLine: { show: false }
+		},
+		yAxis: {
+			type: 'value',
+			name: '',
+			min: 0.0,
+			max: 1.0,
+			interval: 0.2,
+			axisLabel: { color: '#BBB', },
+			axisLine: { lineStyle: {color: '#FFF',},},
+			axisTick: { lineStyle: {color: '#FFF',},},
+			splitArea: {
+				show: true,
+			 	areaStyle: {color: aod_color_list}
+			}
+		},
+		series: [
+			{
+			  	name: '气溶胶(AOD)',
+			  	type: 'boxplot',
+			  	data: [aod_perc_s, aod_perc_l],
+			  	itemStyle: { color: 'rgba(250, 200, 200, 0.8)', }
+			},
+			{
+			  	name: '本地AOD',
+			  	type: 'line',
+			  	data: [local_aod, local_aod],
+			  	lineStyle: {width: 5,},
+			}
+		]
+	}
+	if (opt1 && typeof opt1 === 'object') {ch1.setOption(opt1);}
+    window.addEventListener('resize', ch1.resize);
+
+    // quality dist
+    var dom2 = document.getElementById('quality');
+    var ch2 = echarts.init(dom2, null, {renderer: 'canvas', useDirtyRect: false});
+    var opt2;
+    var local_quality = 0.001;
+    var quality_perc_s = [0, 0, 0, 0, 0];
+    var quality_perc_l = [0, 0, 0, 0, 0];
+
+    quality_perc_s = rfa1d(quality_perc_s, 3);
+	quality_perc_l = rfa1d(quality_perc_l, 3);
+    var local_quality = local_quality.toFixed(3);
+
+	opt2 = {
+		backgroundColor: 'rgba(255,255,255,0.0)',
+	 	title: [
+			{
+			  	text: '鲜艳度四分位数 (GFS+)',
+			  	textStyle: {color: '#FFF', fontSize: 18, },
+			  	subtext: 'Quality Spatial Distribution',
+			  	subtextStyle: {color: '#BBB',},
+			  	left: 'left'
+			},
+	 	],
+	 	color: ["#FFF", "#B2B"],
+	 	tooltip: {
+			trigger: 'item',
+			axisPointer: { type: 'shadow' }
+	 	},
+	 	grid: {
+			left: '10%',
+			right: '5%',
+			bottom: '5%',
+			show: true,
+			borderColor: '#FFF'
+	 	},
+	 	xAxis: {
+			type: 'category',
+			boundaryGap: true,
+			data: ['Q-25km', 'Q-50km'],
+			axisLabel: {color: '#BBB', },
+			axisLine: {lineStyle: {color: '#FFF',},},
+			axisTick: {lineStyle: {color: '#FFF',},},
+			splitArea: { show: false },
+			splitLine: { show: false },
+	 	},
+	 	yAxis: {
+			type: 'value',
+			name: '',
+			min: 0.0,
+			max: 2.5,
+			interval: 0.5,
+			axisLabel: {color: '#BBB', },
+			axisLine: {lineStyle: {color: '#FFF',},},
+			axisTick: {lineStyle: {color: '#FFF',},},
+			splitArea: {
+				show: true,
+				areaStyle: {color: quality_color_list}
+			}
+	 	},
+	 	series: [
+		{
+		  	name: '火烧云鲜艳度',
+		  	type: 'boxplot',
+		  	data: [quality_perc_s, quality_perc_l],
+		  	itemStyle: { color: 'rgba(250, 200, 250, 0.8)', }
+		},
+		{
+		  	name: '本地鲜艳度',
+		  	type: 'line',
+		  	data: [local_quality, local_quality],
+		  	lineStyle: {width: 5,},
+		}
+	 	]
+	}
+	if (opt2 && typeof opt2 === 'object') {ch2.setOption(opt2);}
+    window.addEventListener('resize', ch2.resize);
+
+    // scatter aod-quality
+    var dom3 = document.getElementById('aod_quality');
+    var ch3 = echarts.init(dom3, null, {renderer: 'canvas', useDirtyRect: false});
+    var opt3;
+    var aod_qua_ptls_s = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]];
+    var aod_qua_ptls_l = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]];
+    // fixed digits
+    aod_qua_ptls_s = rfa2d(aod_qua_ptls_s, 3);
+	aod_qua_ptls_l = rfa2d(aod_qua_ptls_l, 3);
+    opt3 = {
+		backgroundColor: 'rgba(255,255,255,0.0)',
+	 	title: [
+			{
+				text: '鲜艳度-AOD 散点图 (CAMS+GFS)',
+				textStyle: {color: '#FFF', fontSize: 18, },
+				subtext: 'Quality-AOD Scatter Graph',
+				subtextStyle: {color: '#BBB',},
+				left: 'left'
+			},
+	 	],
+	 	legend: {
+	 		textStyle: {fontSize: 14, color: '#BBB', },
+	 		top: 26,
+	 	},
+	 	tooltip: {
+			trigger: 'item',
+			axisPointer: { type: 'cross' },
+			formatter: '(鲜艳度, AOD) = ({c})',
+	 	},
+     	grid: {
+			left: '5%',
+			right: '5%',
+			bottom: '5%',
+			show: true,
+			borderColor: '#FFF'
+	 	},
+	 	xAxis: {
+	 	  	name: '',
+	 	  	min: 0.0,
+	 	  	max: 2.5,
+			scale: true,
+			interval: 0.5,
+			axisLabel: {color: '#BBB', },
+			axisLine: {lineStyle: {color: '#999',},},
+			axisTick: {lineStyle: {color: '#FFF',},},
+			splitArea: {
+				show: true,
+				areaStyle: {color: quality_color_list}
+			}
+	 	},
+	 	yAxis: {
+	 		name: '',
+	 		min: 0.0,
+	 	  	max: 1.0,
+			scale: true,
+			interval: 0.2,
+			axisLabel: {color: '#BBB', },
+			axisLine: {lineStyle: {color: '#999',},},
+			axisTick: {lineStyle: {color: '#FFF',},},
+			splitArea: {
+				show: true,
+				areaStyle: {color: aod_color_list}
+			}
+	 	},
+	 	series: [
+		{
+		  	name: '2L',
+		  	type: 'scatter',
+		  	data: aod_qua_ptls_l,
+		  	symbolSize: 5,
+		},
+		{
+		  	name: 'L',
+		  	type: 'scatter',
+		  	data: aod_qua_ptls_s,
+		  	symbolSize: 10,
+		},
+    	{
+    	  	name: 'Local',
+		  	type: 'effectScatter',
+		  	symbolSize: 15,
+		  	data: [[local_quality, local_aod],],
+		},
+	 	]
+	 }
+	if (opt3 && typeof opt3 === 'object') {ch3.setOption(opt3);}
+    window.addEventListener('resize', ch3.resize);
+
+
+	// quality trend
+	var dom4 = document.getElementById('quality_trend');
+	var ch4 = echarts.init(dom4, null, {renderer: 'canvas', useDirtyRect: false});
+	var opt4;
+	var forecast_times_list = ['0512-06z', '0512-12z', '0512-18z', '0513-00z', '0513-06z', '0513-12z', '0513-18z', '0514-00z'];
+	var quality_perc_s_trend = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]];
+	var quality_local_trend = [0.102, 0.096, 0.03, 0.004, 0.03, 0.0, 0.0, 0.0];
+	opt4 = {
+		backgroundColor: 'rgba(255,255,255,0.0)',
+		title: [
+		   	{
+				text: '过去预报时次鲜艳度变化趋势(GFS+CAMS)',
+				textStyle: {color: '#FFF', fontSize: 22, },
+				subtext: 'Quality Spatial Temporal Trend 25km',
+				subtextStyle: {color: '#BBB',},
+				left: 'left'
+		   	},
+		],
+		color: ["#FFF", "#B2B"],
+		tooltip: {
+		   	trigger: 'item',
+		   	axisPointer: { type: 'shadow' }
+		},
+		grid: {
+		   	left: '10%',
+		   	right: '5%',
+		   	bottom: '5%',
+		   	show: true,
+		   	borderColor: '#FFF'
+		},
+		xAxis: {
+		   	type: 'category',
+		   	boundaryGap: true,
+		   	data: forecast_times_list,
+		   	axisLabel: {color: '#BBB', },
+		   	axisLine: {lineStyle: {color: '#FFF',},},
+		   	axisTick: {lineStyle: {color: '#FFF',},},
+		   	splitArea: { show: false },
+		   	splitLine: { show: false },
+		},
+		yAxis: {
+		   	type: 'value',
+		   	name: '',
+		   	min: 0.0,
+		   	max: 2.5,
+		   	interval: 0.5,
+		   	axisLabel: {color: '#BBB', },
+		   	axisLine: {lineStyle: {color: '#FFF',},},
+		   	axisTick: {lineStyle: {color: '#FFF',},},
+		   	splitArea: {
+				show: true,
+				areaStyle: {color: quality_color_list}
+			}
+		},
+		series: [
+	    {
+		 	name: '火烧云鲜艳度',
+		 	type: 'boxplot',
+		 	data: quality_perc_s_trend,
+		 	itemStyle: { color: 'rgba(250, 200, 250, 0.8)', }
+	    },
+	    {
+		 	name: '本地鲜艳度',
+		 	type: 'line',
+		 	data: quality_local_trend,
+		 	lineStyle: {width: 5,},
+	    }]
+    }
+	if (opt4 && typeof opt4 === 'object') {ch4.setOption(opt4);}
+    window.addEventListener('resize', ch4.resize);
+
+
+	// aod trend
+	var dom5 = document.getElementById('aod_trend');
+	var ch5 = echarts.init(dom5, null, {renderer: 'canvas', useDirtyRect: false});
+	var opt5;
+	var forecast_times_list = ['0512-06z', '0512-12z', '0512-18z', '0513-00z', '0513-06z', '0513-12z', '0513-18z', '0514-00z'];
+	var aod_perc_s_trend = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 1], [0, 0, 0, 0, 1], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]];
+	var aod_local_trend = [0.373, 0.344, 0.344, 0.492, 0.492, 0.379, 0.379, 0.374];
+	opt5 = {
+		backgroundColor: 'rgba(255,255,255,0.0)',
+		title: [
+		   	{
+				text: '过去预报时次 AOD 变化趋势(CAMS)',
+				textStyle: {color: '#FFF', fontSize: 22, },
+				subtext: 'AOD Spatial Temporal Trend 25km',
+				subtextStyle: {color: '#BBB',},
+				left: 'left'
+		   	},
+		],
+		color: ["#FFF", "#F00"],
+		tooltip: {
+		   	trigger: 'item',
+		   	axisPointer: { type: 'shadow' }
+		},
+		grid: {
+		   	left: '10%',
+		   	right: '5%',
+		   	bottom: '5%',
+		   	show: true,
+		   	borderColor: '#FFF'
+		},
+		xAxis: {
+		   	type: 'category',
+		   	boundaryGap: true,
+		   	data: forecast_times_list,
+		   	axisLabel: {color: '#BBB', },
+		   	axisLine: {lineStyle: {color: '#FFF',},},
+		   	axisTick: {lineStyle: {color: '#FFF',},},
+		   	splitArea: { show: false },
+		   	splitLine: { show: false },
+		},
+		yAxis: {
+		   	type: 'value',
+		   	name: '',
+		   	min: 0.0,
+		   	max: 1.0,
+		   	interval: 0.2,
+		   	axisLabel: {color: '#BBB', },
+		   	axisLine: {lineStyle: {color: '#FFF',},},
+		   	axisTick: {lineStyle: {color: '#FFF',},},
+		   	splitArea: {
+				show: true,
+				areaStyle: {color: aod_color_list}
+			}
+		},
+		series: [
+		{
+			name: 'AOD',
+			type: 'boxplot',
+			data: aod_perc_s_trend,
+			itemStyle: { color: 'rgba(250, 200, 200, 0.8)', }
+		},
+		{
+			name: '本地 AOD',
+			type: 'line',
+			data: aod_local_trend,
+			lineStyle: {width: 5,},
+		}]
+	}
+	if (opt5 && typeof opt5 === 'object') {ch5.setOption(opt5);}
+	window.addEventListener('resize', ch5.resize);
+
+	var query_id = "0";
+	function update_city_list(){
+		query_id = Math.floor((Math.random()*1000)+1).toString();
+		var city_name_incomplete = $("#city_input").val();
+		var intend = "change_city";
+		info = {query_id, intend, city_name_incomplete};
+		$.ajax(
+			{
+				url: "/detailed/",
+				type: "get",
+				data: info,
+				error: function(){
+					// alert("INTERNAL ERROR");
+				},
+				success: function(res){
+					if (res['query_id'] === query_id){
+					    city_list_obj = document.querySelector('#city_list');
+						var sub = city_list_obj.childNodes;
+						for (var i = sub.length-1; i>=0 ; i--){
+							city_list_obj.removeChild(sub[i]);
+						}
+						max_length = 100;
+						json_data = res['city_list'];
+						if (max_length >= json_data.length){max_length=json_data.length;};
+						for (var i=0; i<max_length; i++){
+							var opt_obj = document.createElement("option");
+							opt_obj.value = json_data[i];
+							city_list_obj.appendChild(opt_obj);
+						}
+					}
+				}
+			}
+		)
+	}
+
+	function clear_input(){
+		$('#city_input').val('');
+	}
+
+	function update_graph(){
+		// 正常一般的请求
+		query_id = Math.floor((Math.random()*10000000)+1).toString();
+		var intend = "select_city";
+		var srch_btn = document.getElementById("srch_btn");
+		var query_city = $("#city_input").val();
+		var event = $("#event_selector").val();
+		var model = $("#model_selector").val();
+		var event_date = "None";
+		var times = "None";
+		var comma = ",";
+
+		// 特殊指定日期的请求
+		if (query_city.split(comma).length == 4){
+			query_city = $("#city_input").val().split(comma)[0];
+			event_date = $("#city_input").val().split(comma)[1];
+			event = $("#city_input").val().split(comma)[2];   // ignore select
+			times = $("#city_input").val().split(comma)[3];
+			intend = "select_city_specify_times";
+		}
+
+		info = {query_id, intend, query_city, model, event_date, event, times};
+		$.ajax({url: "/detailed/",
+			type: "get",
+			data: info,
+			error: function(){alert("INTERNAL ERROR");},
+			success: function(res){
+				if (res['status'] == 'not_found'){alert("NO DATA");}
+				if (res['query_id'] === query_id){
+
+				    // update description
+				    // var obj_fcst_des = document.getElementById("fcst_des");
+				    // obj_fcst_des.setAttribute("href", res["img_href"]);
+				    // obj_fcst_des.innerHTML = res['img_summary'];
+				    var custom_xsection_btn = document.getElementById("custom_xsection");
+				    custom_xsection_btn.setAttribute("onclick", "location.href='"+res["img_href"]+"'")
+
+					// update place-holder
+					var object_city_input = document.getElementById("city_input");
+					object_city_input.setAttribute("placeholder", res['place_holder']);
+
+					// update table
+					var tb_event_time = document.getElementById("tb_event_time");
+					var tb_quality = document.getElementById("tb_quality");
+					var tb_aod = document.getElementById("tb_aod");
+					tb_event_time.innerHTML = res["tb_event_time"];
+					tb_quality.innerHTML = res["tb_quality"];
+					tb_aod.innerHTML = res["tb_aod"];
+
+					// update display variables
+					var display_city_name_event_name = document.getElementById("display_city_name_event_name");
+					display_city_name_event_name.innerHTML = res['display_city_name'] + " " + res['display_event_name_cn'];
+					var display_times_name = document.getElementById("display_times_name");
+					display_times_name.innerHTML = res['display_times_name'];
+					var display_times_str = document.getElementById("display_times_str");
+					display_times_str.innerHTML = res['display_times_str'];
+					var display_model = document.getElementById("display_model");
+					display_model.innerHTML = res['display_model'];
+
+					// 添加高亮效果
+                    tb_event_time.classList.add("highlight");
+                    tb_quality.classList.add("highlight");
+                    tb_aod.classList.add("highlight");
+
+                    // 1秒后移除高亮效果
+                    setTimeout(function() {
+                        tb_event_time.classList.remove("highlight");
+                        tb_quality.classList.remove("highlight");
+                        tb_aod.classList.remove("highlight");
+                    }, 1000);
+
+					// update graph
+                	opt1.series[0].data = [rfa1d(res['aod_perc_s'], 3), rfa1d(res['aod_perc_l'], 3)];
+                	opt1.series[1].data = [res['local_aod'].toFixed(3), res['local_aod'].toFixed(3)];
+                	opt2.series[0].data = [rfa1d(res['quality_perc_s'], 3), rfa1d(res['quality_perc_l'], 3)];
+                	opt2.series[1].data = [res['local_quality'].toFixed(3), res['local_quality'].toFixed(3)];
+                	opt3.series[0].data = rfa2d(res['aod_qua_ptls_l'], 3);
+                	opt3.series[1].data = rfa2d(res['aod_qua_ptls_s'], 3);
+                	opt3.series[2].data = rfa2d([[res['local_quality'], res['local_aod']]], 3);
+					opt4.xAxis.data = res['forecast_times_list'];
+					opt4.series[0].data = rfa2d(res['quality_perc_s_trend'], 3);
+					opt4.series[1].data = rfa1d(res['quality_local_trend'], 3);
+					opt5.xAxis.data = res['forecast_times_list'];
+					opt5.series[0].data = rfa2d(res['aod_perc_s_trend'], 3);
+					opt5.series[1].data = rfa1d(res['aod_local_trend'], 3);
+
+                	ch1.setOption(opt1);
+                	ch2.setOption(opt2);
+                	ch3.setOption(opt3);
+					ch4.setOption(opt4);
+					ch5.setOption(opt5);
+					
+					// update proximate_city_dict_list
+					proximate_city_dict_list = res['proximate_city_dict_list'];
+					var table_body = document.getElementById("proximate-table-body");
+					var table_header_model_h5 = document.getElementById("proximate_city_name_header_display_model");
+					var table_header_event_cn_h5 = document.getElementById("proximate_city_name_header_event_name_cn");
+					table_body.innerHTML = "";
+					table_header_event_cn_h5.innerHTML = "事件： " + res['display_event_name_cn'];
+					table_header_model_h5.innerHTML = "当前选择的预报模式： " + res['display_model']  + " " + res['display_times_str'];
+					for (var i=0; i<proximate_city_dict_list.length; i++){
+						// create table row
+						var tr = document.createElement("tr");
+						// class of tr
+						tr.classList.add("table-row-city-name-clickable");
+						// create table data
+						var td_rank = document.createElement("td");
+						td_rank.textContent = i+1;
+						var td_city_name = document.createElement("td");
+						td_city_name.textContent = proximate_city_dict_list[i]['city_name'];
+						var td_event_name = document.createElement("td");
+						td_event_name.textContent = proximate_city_dict_list[i]['event_time_bjt_str'];
+						var td_quality = document.createElement("td");
+						td_quality.textContent = proximate_city_dict_list[i]['local_quality'];
+						var td_aod = document.createElement("td");
+						td_aod.textContent = proximate_city_dict_list[i]['local_aod'];
+						// append table data to table row
+						tr.appendChild(td_rank);
+						tr.appendChild(td_city_name);
+						tr.appendChild(td_event_name);
+						tr.appendChild(td_quality);
+						tr.appendChild(td_aod);
+						// append table row to table body
+						table_body.appendChild(tr);
+					}
+				}
+			},
+		});
+	}
+
+	// main selection
+	$(document).ready(function(){
+		$("#delete_btn").click(function(){clear_input();});
+		$("#srch_btn").click(function(){update_graph();});
+		$("#city_input").keypress(
+			function(event){
+				if(event.keyCode === 13){update_graph();}
+			}
+		);
+		$("#event_selector").change(function(){update_graph();});
+		$("#model_selector").change(function(){update_graph();});
+		$("#event_selector").click(function(){update_graph();});
+		$("#model_selector").change(function(){update_graph();});
+	});
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 获取输入框和表格
+        const cityInput = document.getElementById('city_input');
+        const table = document.querySelector('.selectable-table');
+
+        // 绑定表格行点击事件
+        if (table) {
+            table.addEventListener('click', function(e) {
+                // 找到被点击的行（tr）
+                const row = e.target.closest('tr');
+                if (!row) return;
+
+                // 获取该行第二个单元格（城市名）的内容
+                const secondCell = row.querySelector('td:nth-child(2)');
+                if (secondCell) {
+                    cityInput.value = secondCell.textContent.trim();
+                    // 可选：触发输入框的 input 事件（如果需即时搜索）
+                    cityInput.dispatchEvent(new Event('input'));
+                    // 更新图表
+                    update_graph();
+                }
+            });
+            table.style.cursor = 'pointer';
+        }
+    });
+</script>
+
+</body>
+
+</html>

@@ -1,10 +1,15 @@
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v6';
 const FRESH_TTL_SECONDS = 90 * 60;
 const STALE_TTL_SECONDS = 6 * 60 * 60;
 const GEOCODE_FRESH_TTL_SECONDS = 7 * 24 * 60 * 60;
 const GEOCODE_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const REQUEST_TIMEOUT_MS = 12000;
+const CACHE_TIMEOUT_MS = 1200;
 const GRID_STEPS = 15;
+const GRID_LAT_SPAN_DEG = 2.2;
+const GRID_LON_SPAN_DEG = 4.4;
+const FORECAST_CACHE_STEP = 0.05;
+const GRID_CACHE_STEP = 0.1;
 
 const WEATHER_VARS = [
   'cloud_cover',
@@ -63,9 +68,7 @@ export function readLatLon(request) {
 
   return {
     latitude: +latitude.toFixed(4),
-    longitude: +longitude.toFixed(4),
-    cacheLatitude: latitude.toFixed(3),
-    cacheLongitude: longitude.toFixed(3)
+    longitude: +longitude.toFixed(4)
   };
 }
 
@@ -73,8 +76,35 @@ export function cacheKey(prefix, latitude, longitude) {
   return `firesky:${CACHE_VERSION}:${prefix}:${latitude}:${longitude}`;
 }
 
+function roundedCoordinate(value, step) {
+  const rounded = Math.round(Number(value) / step) * step;
+  return rounded.toFixed(step >= 0.1 ? 1 : 2);
+}
+
+export function cacheCoordinates(place, prefix) {
+  const step = prefix === 'grid' ? GRID_CACHE_STEP : FORECAST_CACHE_STEP;
+  return {
+    latitude: roundedCoordinate(place.latitude, step),
+    longitude: roundedCoordinate(place.longitude, step)
+  };
+}
+
 export function textCacheKey(prefix, value) {
   return `firesky:${CACHE_VERSION}:${prefix}:${String(value).trim().toLowerCase()}`;
+}
+
+async function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(fallbackValue), timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function cachedJson(env, key, fetcher, options = {}) {
@@ -83,7 +113,7 @@ export async function cachedJson(env, key, fetcher, options = {}) {
   const staleTtl = options.staleTtl ?? STALE_TTL_SECONDS;
   const now = Date.now();
 
-  const cached = cache ? await cache.get(key, 'json') : null;
+  const cached = cache ? await withTimeout(cache.get(key, 'json'), CACHE_TIMEOUT_MS, null) : null;
   if (cached?.timestamp && now - cached.timestamp <= freshTtl * 1000) {
     return { value: cached.value, cacheStatus: 'hit' };
   }
@@ -91,9 +121,12 @@ export async function cachedJson(env, key, fetcher, options = {}) {
   try {
     const value = await fetcher();
     if (cache) {
-      await cache.put(key, JSON.stringify({ timestamp: now, value }), {
-        expirationTtl: staleTtl
-      });
+      await withTimeout(
+        cache.put(key, JSON.stringify({ timestamp: now, value }), {
+          expirationTtl: staleTtl
+        }),
+        CACHE_TIMEOUT_MS
+      );
     }
     return { value, cacheStatus: cached ? 'refresh' : 'miss' };
   } catch (err) {
@@ -104,9 +137,9 @@ export async function cachedJson(env, key, fetcher, options = {}) {
   }
 }
 
-export async function fetchOpenMeteoJson(url, label) {
+export async function fetchOpenMeteoJson(url, label, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -158,16 +191,15 @@ function evenlySpacedOffsets(min, max, steps) {
 }
 
 export function createGridPlaces(place) {
-  const latSteps = evenlySpacedOffsets(-1.1, 1.1, GRID_STEPS);
-  const lonSteps = evenlySpacedOffsets(-1.45, 1.45, GRID_STEPS);
+  const latSteps = evenlySpacedOffsets(-GRID_LAT_SPAN_DEG, GRID_LAT_SPAN_DEG, GRID_STEPS);
+  const lonSteps = evenlySpacedOffsets(-GRID_LON_SPAN_DEG, GRID_LON_SPAN_DEG, GRID_STEPS);
   return latSteps.flatMap((latOffset) => lonSteps.map((lonOffset) => ({
     latitude: +(place.latitude + latOffset).toFixed(4),
     longitude: +(place.longitude + lonOffset).toFixed(4)
   })));
 }
 
-export function makeGridUrl(place) {
-  const samples = createGridPlaces(place);
+export function makeGridUrl(place, samples = createGridPlaces(place)) {
   const params = new URLSearchParams({
     latitude: samples.map((sample) => sample.latitude).join(','),
     longitude: samples.map((sample) => sample.longitude).join(','),
@@ -178,6 +210,15 @@ export function makeGridUrl(place) {
     wind_speed_unit: 'kmh'
   });
   return `https://api.open-meteo.com/v1/forecast?${params}`;
+}
+
+export function makeGridUrls(place, batchSize = 75) {
+  const samples = createGridPlaces(place);
+  const urls = [];
+  for (let index = 0; index < samples.length; index += batchSize) {
+    urls.push(makeGridUrl(place, samples.slice(index, index + batchSize)));
+  }
+  return urls;
 }
 
 export function makeGeocodeUrl(query) {

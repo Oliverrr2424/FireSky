@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+<title>晚霞分析与记录 | Rosy Cloud Analysis and Recording</title>
+
+    <meta name="description" content="火烧云分析数据可视化网站，提供全国主要城市的基于美国NCEP-GFS数值模式和欧洲CAMS大气组分模式的火烧云分析结果">
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/dark_custom.css" type="text/css">
+    <link rel="shortcut icon" href="/static/media/static_image/favicon.ico" type="image/icon">
+    <meta name="keywords" content="Evening Glow, Sunset, Sunrise, Cloud, Weather">
+</head>
+
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark custom-nav-bg-dark">
+        <div class="container-fluid">
+
+            <!-- 网站logo -->
+            
+            <a class="navbar-brand" href="/admin/login/">
+                <img src="/static/media/eveningGlow2021.jpg" alt="logo" style="height: 50px; width: 50px; border-radius: 5px;">
+            </a>
+            
+
+            <!-- 标题 -->
+            <span class="navbar-text me-3 nav-title" style="font-size: 1.75rem; font-weight: bold; color: #f5eec9;">
+                火烧云分析与记录
+            </span>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <!-- 导航栏 -->
+              <!-- 获取当前路由的端点 -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto" style="font-size: 1.2rem; gap: 1rem;">
+                    <li class="nav-item">
+                        <a class="nav-link " href="/">主页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/detailed/">详情页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/map/">地图</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/camera/">摄像头</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/record/">记录</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/reanalysis/">准确率</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/knowledge/">知识</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link " href="/about//">关于</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 内容区域 -->
+    
+    <!-- 内容区域 -->
+    <div class="container-fluid mt-5">
+        <div class="row">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body">
+                        <h5 class="card-title fw-bold">火烧云再分析记录查询</h5>
+                        <p class="card-text">请选择时间、属性和其他选项来查询火烧云记录。</p>
+
+                        <!-- 新增：日期范围选择 -->
+                        <div class="mb-3">
+                            <label for="start_date" class="form-label">开始日期</label>
+                            <input type="date" class="form-control" id="start_date" name="start_date"
+                                   min="2020-04-27" max="2025-07-05" value="2020-04-27">
+                        </div>
+                        <div class="mb-3">
+                            <label for="end_date" class="form-label">结束日期</label>
+                            <input type="date" class="form-control" id="end_date" name="end_date"
+                                   min="2020-04-27" max="2025-07-05" value="2025-07-05">
+                        </div>
+
+                        <!-- 属性选择 -->
+                        <div class="mb-3">
+                            <label for="event" class="form-label">事件</label>
+                            <select class="form-select" id="event">
+                                <option value="0">日出 & 日落</option>
+                                <option value="rise">日出</option>
+                                <option value="set">日落</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="cloud" class="form-label">云属</label>
+                            <select class="form-select" id="cloud">
+                                <option value="0">任何云属</option>
+                                <option value="Sc">层积云</option>
+                                <option value="Cu">积云</option>
+                                <option value="Cb">积雨云</option>
+                                <option value="As">高层云</option>
+                                <option value="Ac">高积云</option>
+                                <option value="Ci">卷云</option>
+                                <option value="Cc">卷积云</option>
+                                <option value="Cs">卷层云</option>
+                                <option value="Anv">云砧</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="color" class="form-label">颜色</label>
+                            <select class="form-select" id="color">
+                                <option value="0">任何颜色</option>
+                                <option value="red">红色</option>
+                                <option value="orred">橘红色</option>
+                                <option value="or">橘色</option>
+                                <option value="oryel">橘黄色</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="quality" class="form-label">质量</label>
+                            <select class="form-select" id="quality">
+                                <option value="0">任何质量</option>
+                                <option value="none">不烧</option>
+                                <option value="trace">微烧</option>
+                                <option value="low">小烧</option>
+                                <option value="medium">小到中烧</option>
+                                <option value="high">中到大烧</option>
+                                <option value="pro">大烧</option>
+                            </select>
+                        </div>
+
+                        <!-- 其他选择 -->
+                        <div class="mb-3">
+                            <label for="sky" class="form-label">天象</label>
+                            <select class="form-select" id="sky">
+                                <option value="0">任何天象</option>
+                                <option value="ltn">闪电</option>
+                                <option value="sp">日柱</option>
+                                <option value="rb">彩虹</option>
+                                <option value="rrb">红虹</option>
+                                <option value="mmt">乳状云</option>
+                                <option value="vg">落幡</option>
+                                <option value="fstrh">落幡云洞</option>
+                                <option value="dplct">复云</option>
+                                <option value="spst">密云</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="url" class="form-label">案例</label>
+                            <select class="form-select" id="url">
+                                <option value="0">有无案例均可</option>
+                                <option value="url">有案例</option>
+                            </select>
+                        </div>
+
+                        <!-- 搜索按钮 -->
+                        <button class="btn btn-primary" id="sh_rec_submit_btn" style="width:150px;">Search</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 搜索结果 -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card bg-dark text-light">
+                    <div class="card-body">
+                        <h5 class="card-title fw-bold">搜索结果</h5>
+                        <div class="table-responsive">
+                            <table class="table table-dark table-striped fixed-table" id="data-table">
+                                <colgroup>
+                                    <col style="width: 15%;">
+                                    <col style="width: 10%;">
+                                    <col style="width: 15%;">
+                                    <col style="width: 20%;">
+                                    <col style="width: 15%;">
+                                    <col style="width: 15%;">
+                                    <col style="width: 10%;">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">日期</th>
+                                        <th scope="col">事件</th>
+                                        <th scope="col">观测云属</th>
+                                        <th scope="col">颜色</th>
+                                        <th scope="col">真实质量</th>
+                                        <th scope="col">观测天象</th>
+                                        <th scope="col">图/视频</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rosy_search_tbody">
+                                    <!-- 表格数据将通过 JavaScript 动态插入 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- 页脚 -->
+    <footer class="footer-custom-dark text-white mt-4">
+        <div class="container py-4">
+            <div class="row">
+                <div class="col text-center">
+                    <p><b>火烧云预测与记录</b><br><b>Copyright &copy;sunsetbot team</b>. All Rights Reserved.</p>
+                </div>
+                <div class="col text-center">
+                    <p>最近一次编辑日期：2025-03-15 16:00:31<br><a target="_blank" href="https://beian.miit.gov.cn/" class="text-white">沪ICP备2023021092号</a></p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- 引入 Bootstrap JS 和依赖 -->
+    <script src="/static/js/lib/popper.min.js"></script>
+    <script src="/static/js/lib/bootstrap.min.js"></script>
+
+    <!-- 自定义JS -->
+    
+    <script src="/static/js/lib/jquery-2.1.4.min.js"></script>
+    <script src="/static/js/modules/run.js"></script>
+    <script type="text/javascript">
+    $(document).ready(function(){
+        $("#sh_rec_submit_btn").click(function(){
+            // 直接读取日期输入框的值
+            var start_date = $("#start_date").val();  // 格式：YYYY-MM-DD
+            var end_date = $("#end_date").val();      // 格式：YYYY-MM-DD
+
+            var event = $("#event").val()
+            var cloud = $("#cloud").val()
+            var color = $("#color").val()
+            var quality = $("#quality").val()
+            var sky = $("#sky").val()
+            var url = $("#url").val()
+            var intend = "select_event";
+
+            var info = {
+                start_date,
+                end_date,
+                event,
+                cloud,
+                color,
+                quality,
+                sky,
+                url,
+                intend
+            };
+
+            $.ajax({
+                url: "/record/custom/",
+                type: "get",
+                data: info,
+                error : function(){alert("INTERNAL ERROR");},
+                success:function(res) {
+                    if (res.status == "ok"){
+                        tbody = document.querySelector('#rosy_search_tbody');
+                        // 清空表格内容
+                        tbody.innerHTML = '';
+                        // 动态生成表格内容
+                        const rows = res.table_content; // 从第二行开始是数据
+                        rows.forEach(row => {
+                            const tr = document.createElement('tr');
+                            row.forEach(cell => {
+                                // 对最后一列含有多个被 \n 分割的 url，将每一个 url 分离出来作为超链接，填写进这个 td 元素
+                                if (containsUrl(cell)){
+                                    td = convertString2Url(cell);
+                                    tr.appendChild(td);
+                                }
+                                // 其他列直接填入 td 元素
+                                else{
+                                    const td = document.createElement('td');
+                                    td.textContent = cell;
+                                    tr.appendChild(td);
+                                }
+                            });
+                            tbody.appendChild(tr);
+                        });
+                    }
+                    else if (res.status == "not_found"){alert("NO DATA");}
+                },
+            });
+        });
+    });
+    </script>
+
+</body>
+
+</html>

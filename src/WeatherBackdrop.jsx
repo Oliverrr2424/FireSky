@@ -21,8 +21,8 @@ export default function WeatherBackdrop({ theme = 'clear', isNight = false }) {
     let stars = [];
     let clouds = [];
     let lightning = { alpha: 0, nextAt: 0, flickers: 0 };
-    let sunHalo = { phase: 0 };
     let rafId = 0;
+    let resizeFrame = 0;
     let last = performance.now();
     let visible = !document.hidden;
 
@@ -31,12 +31,24 @@ export default function WeatherBackdrop({ theme = 'clear', isNight = false }) {
     }
 
     function resize() {
-      width = canvas.clientWidth;
-      height = canvas.clientHeight;
+      const nextWidth = Math.round(canvas.clientWidth);
+      const nextHeight = Math.round(canvas.clientHeight);
+      if (!nextWidth || !nextHeight) return;
+      if (nextWidth === Math.round(width) && Math.abs(nextHeight - height) < 48) return;
+      width = nextWidth;
+      height = nextHeight;
       canvas.width = Math.max(1, Math.round(width * dpr));
       canvas.height = Math.max(1, Math.round(height * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       init();
+    }
+
+    function scheduleResize() {
+      if (resizeFrame) cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        resize();
+      });
     }
 
     function init() {
@@ -161,21 +173,6 @@ export default function WeatherBackdrop({ theme = 'clear', isNight = false }) {
       sky.addColorStop(0.48, mid);
       sky.addColorStop(1, bottom);
       ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, width, height);
-
-      const glowX = isNight ? width * 0.78 : width * 0.72;
-      const glowY = isNight ? height * 0.18 : height * 0.16;
-      const glow = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, Math.max(width, height) * 0.72);
-      if (isNight) {
-        glow.addColorStop(0, 'rgba(205, 215, 255, 0.18)');
-        glow.addColorStop(0.44, 'rgba(100, 128, 200, 0.08)');
-        glow.addColorStop(1, 'rgba(20, 30, 70, 0)');
-      } else {
-        glow.addColorStop(0, 'rgba(255, 238, 190, 0.35)');
-        glow.addColorStop(0.38, 'rgba(255, 218, 150, 0.12)');
-        glow.addColorStop(1, 'rgba(255, 218, 150, 0)');
-      }
-      ctx.fillStyle = glow;
       ctx.fillRect(0, 0, width, height);
 
       if (theme === 'storm' || theme === 'rain' || theme === 'fog') {
@@ -325,43 +322,10 @@ export default function WeatherBackdrop({ theme = 'clear', isNight = false }) {
     }
 
     function drawClearNight(dt) {
-      // Soft moon glow
-      const mx = width * 0.82;
-      const my = height * 0.18;
-      const halo = ctx.createRadialGradient(mx, my, 0, mx, my, Math.max(width, height) * 0.55);
-      halo.addColorStop(0, 'rgba(220,230,255,0.18)');
-      halo.addColorStop(0.5, 'rgba(180,200,240,0.05)');
-      halo.addColorStop(1, 'rgba(180,200,240,0)');
-      ctx.fillStyle = halo;
-      ctx.fillRect(0, 0, width, height);
-      ctx.beginPath();
-      ctx.fillStyle = 'rgba(245,245,235,0.85)';
-      ctx.arc(mx, my, 22, 0, Math.PI * 2);
-      ctx.fill();
-
       drawClouds(dt);
     }
 
     function drawClearDay(dt) {
-      sunHalo.phase += dt * 0.25;
-      const cx = width * 0.82;
-      const cy = height * 0.18;
-      const pulse = 1 + Math.sin(sunHalo.phase) * 0.04;
-      const r = Math.max(width, height) * 0.6 * pulse;
-
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, 'rgba(255,236,196,0.55)');
-      g.addColorStop(0.25, 'rgba(255,210,140,0.22)');
-      g.addColorStop(0.6, 'rgba(255,200,120,0.06)');
-      g.addColorStop(1, 'rgba(255,200,120,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, width, height);
-
-      ctx.beginPath();
-      ctx.fillStyle = 'rgba(255,248,230,0.9)';
-      ctx.arc(cx, cy, 26, 0, Math.PI * 2);
-      ctx.fill();
-
       for (const p of particles) {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
@@ -403,13 +367,14 @@ export default function WeatherBackdrop({ theme = 'clear', isNight = false }) {
       last = performance.now();
     }
 
-    const ro = new ResizeObserver(resize);
+    const ro = new ResizeObserver(scheduleResize);
     ro.observe(canvas);
     document.addEventListener('visibilitychange', onVisibility);
     resize();
     rafId = requestAnimationFrame(step);
 
     return () => {
+      if (resizeFrame) cancelAnimationFrame(resizeFrame);
       cancelAnimationFrame(rafId);
       ro.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
