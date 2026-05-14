@@ -157,6 +157,17 @@ function weightedAverage(pairs) {
   return usable.reduce((sum, [value, weight]) => sum + value * weight, 0) / totalWeight;
 }
 
+function weightedProductScore(pairs, floor = 0.03) {
+  const usable = pairs.filter(([value]) => value != null && !Number.isNaN(value));
+  if (!usable.length) return 0;
+  const totalWeight = usable.reduce((sum, [, weight]) => sum + weight, 0);
+  const product = usable.reduce((nextProduct, [value, weight]) => {
+    const normalized = Math.max(floor, clamp(value) / 100);
+    return nextProduct * normalized ** (weight / totalWeight);
+  }, 1);
+  return clamp(product * 100);
+}
+
 function parseLocalDate(value) {
   return value ? new Date(value) : null;
 }
@@ -444,6 +455,10 @@ function computeWindowScore(window, air, mode, context = {}) {
   const wind = scoreBand(window.wind, 0, 3, 22, 42);
   const instability = scoreLowerBetter(window.cape ?? 0, 80, 1400);
   const vpd = scoreBand(window.vapourPressureDeficit ?? 0.7, 0, 0.2, 1.4, 2.6);
+  const directBeam = window.directNormal ?? window.direct;
+  const beamPurity = directBeam != null && window.diffuse != null && directBeam > 0
+    ? scoreHigherBetter(directBeam / (window.diffuse + 1), 0.45, 3.2)
+    : 55;
   const sunAccess = mode === 'sunset'
     ? weightedAverage([
         [scoreHigherBetter(window.directNormal ?? window.direct ?? 0, 45, 430), 0.5],
@@ -489,26 +504,49 @@ function computeWindowScore(window, air, mode, context = {}) {
     [wind, 0.1],
     [instability, 0.08]
   ]);
+  const cloudCanvas = weightedAverage([
+    [highCloud, 0.46],
+    [midCloud, 0.29],
+    [totalCloud, 0.14],
+    [regionalTexture, 0.11]
+  ]);
+  const intensityScreen = weightedAverage([
+    [highCloud, 0.42],
+    [midCloud, 0.23],
+    [regionalTexture, 0.22],
+    [totalCloud, 0.13]
+  ]);
+  const opticalColor = weightedAverage([
+    [scoreBand(aod ?? 0.1, 0, 0.04, 0.2, 0.55), 0.34],
+    [scoreBand(pm25 ?? 8, 0, 3, 12, 35), 0.22],
+    [scoreLowerBetter(aqi ?? 40, 18, 110), 0.18],
+    [scoreLowerBetter(dust ?? 0, 5, 75), 0.1],
+    [humidity, 0.1],
+    [vpd, 0.06]
+  ]);
+  const contrast = weightedAverage([
+    [visibility, 0.38],
+    [beamPurity, 0.32],
+    [scoreBand(window.humidity, mode === 'sunrise' ? 18 : 14, mode === 'sunrise' ? 36 : 28, mode === 'sunrise' ? 76 : 68, 92), 0.3]
+  ]);
 
-  const probability = clamp(
-    cloudScreen * 0.35 +
-      blockersClearance * 0.22 +
-      solarCorridor * 0.2 +
-      colorChemistry * 0.13 +
-      sunAccess * 0.06 +
-      regionalTexture * 0.04
-  );
+  const probability = weightedProductScore([
+    [horizonOpening, 0.23],
+    [solarCorridor, 0.18],
+    [lowCloudPenalty, 0.17],
+    [rain, 0.15],
+    [visibility, 0.09],
+    [cloudCanvas, 0.18]
+  ]);
 
-  const quality = clamp(
-    probability * 0.42 +
-      highCloud * 0.13 +
-      midCloud * 0.08 +
-      aerosol * 0.08 +
-      visibility * 0.07 +
-      horizonOpening * 0.05 +
-      solarCorridor * 0.12 +
-      regionalTexture * 0.05
-  );
+  const quality = weightedAverage([
+    [intensityScreen, 0.34],
+    [opticalColor, 0.24],
+    [contrast, 0.16],
+    [beamPurity, 0.1],
+    [regionalTexture, 0.1],
+    [wind, 0.06]
+  ]);
 
   const blockers = [];
   if ((window.cloudLow ?? 0) > 48) blockers.push('Low cloud may block the horizon');
@@ -541,13 +579,18 @@ function computeWindowScore(window, air, mode, context = {}) {
       aerosol,
       wind,
       instability,
+      beamPurity,
       sunAccess,
       horizonOpening,
       solarCorridor,
       regionalTexture,
       cloudScreen,
       blockersClearance,
-      colorChemistry
+      colorChemistry,
+      cloudCanvas,
+      intensityScreen,
+      opticalColor,
+      contrast
     },
     blockers,
     boosts,
@@ -605,11 +648,78 @@ function formatPercent(value) {
 }
 
 function describeScore(score) {
-  if (score >= 78) return 'Exceptional';
-  if (score >= 62) return 'Worth waiting';
+  if (score >= 85) return 'Excellent';
+  if (score >= 72) return 'High chance';
+  if (score >= 63) return 'Worth watching';
   if (score >= 42) return 'Possible';
   if (score >= 24) return 'Weak';
   return 'Unlikely';
+}
+
+function normalizeMlPercent(score) {
+  const value = score?.score ?? score?.probability;
+  if (!Number.isFinite(value)) return null;
+  return clamp(value <= 1 ? value * 100 : value, 0, 100);
+}
+
+function mergeMlScore(ruleScore, mlScore) {
+  const mlPercent = normalizeMlPercent(mlScore);
+  if (mlPercent == null) return ruleScore;
+  return {
+    ...ruleScore,
+    probability: mlPercent,
+    ml: {
+      ...mlScore,
+      probability: mlPercent,
+      fallbackProbability: ruleScore.probability
+    }
+  };
+}
+
+function scoreModelLabel(score) {
+  return score?.ml ? 'ML v2' : 'Rules';
+}
+
+function debugScore(score) {
+  if (!score) return null;
+  return {
+    displaySource: scoreModelLabel(score),
+    displayedProbability: Math.round(score.probability ?? 0),
+    ruleFallbackProbability: score.ml?.fallbackProbability != null ? Math.round(score.ml.fallbackProbability) : null,
+    mlProbability: score.ml?.probability != null ? Math.round(score.ml.probability) : null,
+    mlLevel: score.ml?.level,
+    mlConfidence: score.ml?.confidence,
+    featureCoverage: score.ml?.featureCoverage,
+    thresholds: score.ml?.thresholds,
+    components: score.ml?.components,
+    ruleFactors: {
+      cloudScreen: Math.round(score.factors?.cloudScreen ?? 0),
+      solarCorridor: Math.round(score.factors?.solarCorridor ?? 0),
+      blockersClearance: Math.round(score.factors?.blockersClearance ?? 0),
+      colorChemistry: Math.round(score.factors?.colorChemistry ?? 0)
+    }
+  };
+}
+
+function logForecastScoring(forecast, place) {
+  if (typeof console === 'undefined' || !forecast?.scores) return;
+  console.info('[FireSky] forecast scoring', {
+    place: place ? {
+      name: place.name,
+      latitude: place.latitude,
+      longitude: place.longitude
+    } : null,
+    cloudflare: {
+      mlStatus: forecast.ml?.status,
+      mlModelVersion: forecast.ml?.modelVersion,
+      mlCalibration: forecast.ml?.calibration,
+      mlReason: forecast.ml?.reason,
+      oofRocAuc: forecast.ml?.metrics?.oofRocAuc,
+      oofAveragePrecision: forecast.ml?.metrics?.oofAveragePrecision
+    },
+    sunrise: debugScore(forecast.scores.sunrise),
+    sunset: debugScore(forecast.scores.sunset)
+  });
 }
 
 const SCORE_COLOR_STOPS = [
@@ -709,7 +819,7 @@ function currentAirSnapshot(air) {
   };
 }
 
-function buildForecast({ weather, air }) {
+function buildForecast({ weather, air, ml }) {
   const utcOffsetSeconds = weather.utc_offset_seconds ?? 0;
   const timeZone = weather.timezone || undefined;
   const sunrise = localIsoToUtcDate(weather.daily?.sunrise?.[0], utcOffsetSeconds);
@@ -722,8 +832,14 @@ function buildForecast({ weather, air }) {
     sunset: airSnapshotAt(air, sunset, utcOffsetSeconds)
   };
 
-  const sunriseScore = computeWindowScore(sunriseWindow, airSnapshots.sunrise, 'sunrise');
-  const sunsetScore = computeWindowScore(sunsetWindow, airSnapshots.sunset, 'sunset');
+  const sunriseScore = mergeMlScore(
+    computeWindowScore(sunriseWindow, airSnapshots.sunrise, 'sunrise'),
+    ml?.status === 'ok' ? ml?.scores?.sunrise : null
+  );
+  const sunsetScore = mergeMlScore(
+    computeWindowScore(sunsetWindow, airSnapshots.sunset, 'sunset'),
+    ml?.status === 'ok' ? ml?.scores?.sunset : null
+  );
   const blueHour = computeBlueHourWindows({
     latitude: weather.latitude,
     longitude: weather.longitude,
@@ -750,6 +866,7 @@ function buildForecast({ weather, air }) {
     appearanceWindow,
     windows: { sunrise: sunriseWindow, sunset: sunsetWindow },
     scores: { sunrise: sunriseScore, sunset: sunsetScore },
+    ml,
     current: weather.current,
     airSnapshot,
     airSnapshots
@@ -897,7 +1014,10 @@ function applyRegionalContextToForecast(forecast, regionalPoints, place) {
       sunBearing: target ? sunAzimuth(target, place.latitude, place.longitude) : (mode === 'sunset' ? 270 : 90)
     };
     const context = regionalContextForPoint(point, regionalPoints, mode);
-    nextScores[mode] = computeWindowScore(forecast.windows[mode], forecast.airSnapshots?.[mode] ?? forecast.airSnapshot, mode, context);
+    nextScores[mode] = mergeMlScore(
+      computeWindowScore(forecast.windows[mode], forecast.airSnapshots?.[mode] ?? forecast.airSnapshot, mode, context),
+      forecast.ml?.status === 'ok' ? forecast.ml?.scores?.[mode] : forecast.scores?.[mode]?.ml
+    );
   });
   return { ...forecast, scores: nextScores };
 }
@@ -1909,6 +2029,7 @@ function App() {
     setError('');
     try {
       const forecast = await fetchForecast(nextPlace, { force });
+      logForecastScoring(forecast, nextPlace);
       const modeForGrid = userSelectedModeRef.current ? nextMode : preferredForecastMode(forecast);
       if (seq !== loadSeq.current) return;
       if (!userSelectedModeRef.current && modeForGrid !== activeMode) setActiveMode(modeForGrid);
@@ -1989,6 +2110,7 @@ function App() {
   const activeWindow = data?.windows?.[activeMode];
   const activeAppearanceWindow = data?.appearanceWindow?.[activeMode];
   const activeAirSnapshot = data?.airSnapshots?.[activeMode] ?? data?.airSnapshot;
+  const activeModel = scoreModelLabel(active);
   const theme = data ? weatherTheme(data.current?.weather_code, data.current?.cloud_cover) : 'clear';
   const currentWeather = data ? weatherDescription(data.current?.weather_code, data.current?.cloud_cover) : 'Loading';
   const isNight = useMemo(() => {
@@ -2078,13 +2200,14 @@ function App() {
                   <div className="eyebrow">
                     <Sparkles size={14} />
                     <span>Today's Fire Sky Forecast · North America</span>
+                    <b className={active?.ml ? 'model-badge ml' : 'model-badge fallback'}>{activeModel}</b>
                   </div>
                   <div className="current-weather-line">
                     <strong>{Math.round(data.current?.temperature_2m ?? 0)}°</strong>
                     <span>{currentWeather}</span>
                   </div>
                   <h1>{dominant === 'sunset' ? 'Sunset is the better bet' : 'Sunrise is the better bet'}</h1>
-                  <p>Explainable scoring from cloud layers, precipitation, visibility, humidity, aerosols, and PM2.5.</p>
+                  <p>{active?.ml ? 'ML v2 chance with rule-based weather explanations and automatic fallback.' : 'Rule-based fallback from cloud layers, precipitation, visibility, humidity, aerosols, and PM2.5.'}</p>
                 </div>
                 <ScoreRing value={active.probability} label={describeScore(active.probability)} tone={activeMode} />
               </GlassCard>
@@ -2156,7 +2279,7 @@ function App() {
                 <div className="section-title">
                   <span>Window Forecast · Solar Corridor</span>
                   <strong className="score-pair">
-                    <span><small>Probability</small>{formatPercent(active.probability)}</span>
+                    <span><small>{active?.ml ? 'ML Chance' : 'Probability'}</small>{formatPercent(active.probability)}</span>
                     <i />
                     <span><small>Intensity</small>{formatPercent(active.quality)}</span>
                   </strong>
@@ -2166,6 +2289,14 @@ function App() {
                   <div><strong>{formatDuration(activeAppearanceWindow?.start, activeAppearanceWindow?.end)}</strong><span>Best Duration</span></div>
                   <div><strong>{activeAirSnapshot?.us_aqi != null ? Math.round(activeAirSnapshot.us_aqi) : '--'}</strong><span>Window AQI</span></div>
                   <div><strong>{((activeWindow.visibility ?? 0) / 1000).toFixed(1)}km</strong><span>Window Visibility</span></div>
+                </div>
+                <div className="model-note">
+                  <Check size={14} />
+                  <span>
+                    {active?.ml
+                      ? `Using ${data.ml?.modelVersion || 'firesky-v2'} (${data.ml?.calibration || 'online blend'}); rule score fallback was ${formatPercent(active.ml.fallbackProbability)}.`
+                      : 'ML service is not configured or unavailable; using the local rule score.'}
+                  </span>
                 </div>
                 <FactorBars score={active} />
                 <div className="verdict">
@@ -2184,7 +2315,7 @@ function App() {
 
         <footer className="source-line">
           <Check size={14} />
-          <span>Open-Meteo Forecast + Air Quality · Today only.</span>
+          <span>{data?.ml?.status === 'ok' ? 'FireSky ML v2 + Open-Meteo Forecast + Air Quality · Today only.' : 'Open-Meteo Forecast + Air Quality · Rule fallback · Today only.'}</span>
         </footer>
       </section>
     </main>
