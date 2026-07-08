@@ -5,6 +5,7 @@ const GEOCODE_FRESH_TTL_SECONDS = 7 * 24 * 60 * 60;
 const GEOCODE_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const REQUEST_TIMEOUT_MS = 12000;
 const CACHE_TIMEOUT_MS = 1200;
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const GRID_STEPS = 15;
 const GRID_LAT_SPAN_DEG = 2.2;
 const GRID_LON_SPAN_DEG = 4.4;
@@ -16,9 +17,12 @@ const WEATHER_VARS = [
   'cloud_cover_low',
   'cloud_cover_mid',
   'cloud_cover_high',
+  'dew_point_2m',
   'relative_humidity_2m',
   'precipitation_probability',
   'precipitation',
+  'pressure_msl',
+  'surface_pressure',
   'visibility',
   'wind_speed_10m',
   'wind_gusts_10m',
@@ -33,7 +37,7 @@ const WEATHER_VARS = [
 ].join(',');
 
 const DAILY_VARS = 'sunrise,sunset,uv_index_max,precipitation_probability_max';
-const AIR_VARS = 'us_aqi,pm2_5,pm10,aerosol_optical_depth,dust';
+const AIR_VARS = 'us_aqi,pm2_5,pm10,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,aerosol_optical_depth,dust';
 
 export function jsonResponse(value, init = {}) {
   return new Response(JSON.stringify(value), {
@@ -107,6 +111,18 @@ async function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableFetchError(err) {
+  const message = String(err?.message ?? '').toLowerCase();
+  return err?.retryable ||
+    message.includes('timed out') ||
+    message.includes('network') ||
+    message.includes('fetch failed');
+}
+
 export async function cachedJson(env, key, fetcher, options = {}) {
   const cache = getCache(env);
   const freshTtl = options.freshTtl ?? FRESH_TTL_SECONDS;
@@ -120,6 +136,9 @@ export async function cachedJson(env, key, fetcher, options = {}) {
 
   try {
     const value = await fetcher();
+    if (options.validate && !options.validate(value)) {
+      throw new Error(options.invalidMessage || 'Cached payload failed validation');
+    }
     if (cache) {
       await withTimeout(
         cache.put(key, JSON.stringify({ timestamp: now, value }), {
@@ -137,27 +156,64 @@ export async function cachedJson(env, key, fetcher, options = {}) {
   }
 }
 
-export async function fetchOpenMeteoJson(url, label, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+export async function fetchOpenMeteoJson(url, label, timeoutMs = REQUEST_TIMEOUT_MS, options = {}) {
+  const maxAttempts = options.maxAttempts ?? 3;
 
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { Accept: 'application/json' }
-    });
-    if (!response.ok) {
-      const retryAfter = response.headers.get('Retry-After');
-      const suffix = retryAfter ? `; retry after ${retryAfter}s` : '';
-      throw new Error(`${label} request failed (${response.status}${suffix})`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' }
+      });
+      if (!response.ok) {
+        const retryAfter = response.headers.get('Retry-After');
+        const suffix = retryAfter ? `; retry after ${retryAfter}s` : '';
+        const err = new Error(`${label} request failed (${response.status}${suffix})`);
+        err.retryable = RETRYABLE_STATUS_CODES.has(response.status);
+        throw err;
+      }
+      const value = await response.json();
+      if (options.validate && !options.validate(value)) {
+        const err = new Error(options.invalidMessage || `${label} response was incomplete`);
+        err.retryable = true;
+        throw err;
+      }
+      return value;
+    } catch (err) {
+      const error = err.name === 'AbortError' ? new Error(`${label} request timed out`) : err;
+      if (err.name === 'AbortError') error.retryable = true;
+      if (attempt < maxAttempts && isRetryableFetchError(error)) {
+        await sleep(250 * attempt);
+        continue;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    return response.json();
-  } catch (err) {
-    if (err.name === 'AbortError') throw new Error(`${label} request timed out`);
-    throw err;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw new Error(`${label} request failed`);
+}
+
+export function isUsableWeatherPayload(value) {
+  return Boolean(
+    value &&
+      Array.isArray(value.hourly?.time) &&
+      value.hourly.time.length > 0 &&
+      Array.isArray(value.daily?.sunrise) &&
+      Array.isArray(value.daily?.sunset) &&
+      value.daily.sunrise[0] &&
+      value.daily.sunset[0] &&
+      Number.isFinite(Number(value.latitude)) &&
+      Number.isFinite(Number(value.longitude))
+  );
+}
+
+export function isUsableForecastBundle(value) {
+  return Boolean(value?.weather && isUsableWeatherPayload(value.weather));
 }
 
 export function makeForecastUrl(place) {

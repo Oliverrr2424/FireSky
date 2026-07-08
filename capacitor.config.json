@@ -1,0 +1,9 @@
+{
+  "appId": "com.firesky.app",
+  "appName": "FireSky",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}

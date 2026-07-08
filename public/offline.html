@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#3e83d4" />
+    <title>FireSky Offline</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        min-height: 100svh;
+        display: grid;
+        place-items: center;
+        font-family: Inter, system-ui, sans-serif;
+        background: linear-gradient(180deg, #15294a, #0b1424);
+        color: #f1f5f9;
+        padding: 24px;
+        text-align: center;
+      }
+      main {
+        max-width: 420px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(10px);
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 24px;
+      }
+      p {
+        margin: 0;
+        line-height: 1.5;
+        color: rgba(241, 245, 249, 0.85);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>You're offline</h1>
+      <p>FireSky needs a connection to refresh forecasts. Cached content will load automatically when available.</p>
+    </main>
+  </body>
+</html>

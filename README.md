@@ -2,8 +2,8 @@
 
 火烧云 / 朝霞晚霞预测前端，部署在 Cloudflare Pages（含 Pages Functions）。
 
-- 生产站点: https://fireskychase.pages.dev
-- 仓库: https://github.com/Oliverrr2424/FireSky
+- 生产站点: [https://fireskychase.pages.dev](https://fireskychase.pages.dev)
+- 仓库: [https://github.com/Oliverrr2424/FireSky](https://github.com/Oliverrr2424/FireSky)
 
 ## 技术栈
 
@@ -34,6 +34,29 @@ npx wrangler pages dev dist
 
 `npm run dev` 默认监听 `http://127.0.0.1:5173`。  
 `wrangler pages dev` 默认监听 `http://127.0.0.1:8788`，会自动加载本地 KV 模拟、`.dev.vars` 环境变量。
+
+### 开发模式怎么选
+
+- 只改前端 UI / 交互 / 样式：用 `npm run dev`（启动快，热更新快）
+- 要联调 `functions/api/*`、KV、Cloudflare 运行时：用 `npm run build && npx wrangler pages dev dist`
+- 看到页面提示 `Weather data is temporarily unavailable`：通常是你只开了 Vite 前端，没有启动 Pages Functions；切到 `wrangler pages dev` 即可
+
+### 常用命令速查
+
+```bash
+# 前端快速开发（不含 functions）
+npm run dev
+
+# 完整本地联调（含 functions + KV 模拟）
+npm run build
+npx wrangler pages dev dist --ip 127.0.0.1 --port 8788 --kv FIRESKY_CACHE
+
+# 本地静态预览（不含 functions）
+npm run build
+npm run preview
+```
+
+> 端口占用提示：如果 `5173` 被占用，Vite 会自动切到 `5174`/`5175` 等端口；以终端输出的 `Local:` 地址为准。
 
 ### 本地环境变量
 
@@ -81,6 +104,32 @@ npx wrangler pages deploy dist --project-name firesky --branch master
 
 > 旧项目 `fire-sky-now`（`fire-sky-now.pages.dev`）是早期通过 Direct Upload 创建的，已被 `firesky` 取代。
 
+## 移动端（Capacitor）
+
+已支持使用 Capacitor 打包到 Android / iOS。
+
+```bash
+# 首次安装依赖
+npm install
+
+# Web 构建 + Capacitor 同步
+npm run mobile:build
+
+# 体检（会在 Windows 上提示缺少 Xcode，属正常）
+npm run mobile:doctor
+
+# 打开原生工程
+npm run mobile:open:android
+npm run mobile:open:ios
+```
+
+发布与合规文档：
+
+- `docs/mobile/release-runbook.md`
+- `docs/mobile/privacy-policy-template.md`
+- `docs/mobile/app-store-submission.md`
+- `docs/mobile/google-play-submission.md`
+
 ## Cloudflare 资源
 
 - Pages 项目: `firesky`
@@ -117,3 +166,4 @@ wrangler.toml        Cloudflare 配置（Pages + KV binding）
 1. 在 `dev` 等非 `master` 分支上开发，push 后用预览部署地址联调。
 2. 验证 OK 后合并到 `master`，自动发布生产。
 3. 修改 Functions 时建议用 `wrangler pages dev dist` 在本地预跑，避免直接打到生产。
+

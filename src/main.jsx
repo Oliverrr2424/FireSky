@@ -10,6 +10,8 @@ import {
   ChevronDown,
   CloudSun,
   Loader2,
+  Bell,
+  BellOff,
   LocateFixed,
   MapPin,
   MoonStar,
@@ -18,7 +20,9 @@ import {
   RefreshCw,
   Search,
   Sparkles,
-  SunMedium
+  SunMedium,
+  ThumbsDown,
+  ThumbsUp
 } from 'lucide-react';
 import './styles.css';
 import WeatherBackdrop from './WeatherBackdrop.jsx';
@@ -26,7 +30,7 @@ import WeatherBackdrop from './WeatherBackdrop.jsx';
 // Cache + refresh cadence. Open-Meteo has hourly quotas; we respect them by
 // serving localStorage copies within a 90 minute window and fall back to stale
 // (< 6h) data whenever the network fails.
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const CACHE_TTL_MS = 90 * 60 * 1000;
 const STALE_TTL_MS = 6 * 60 * 60 * 1000;
 const REFRESH_INTERVAL_MS = 90 * 60 * 1000;
@@ -36,6 +40,15 @@ const GRID_REQUEST_TIMEOUT_MS = 45000;
 const FORECAST_CACHE_STEP = 0.05;
 const GRID_CACHE_STEP = 0.1;
 const pendingJsonRequests = new Map();
+const IS_LOW_POWER_DEVICE = typeof navigator !== 'undefined' && (
+  (Number.isFinite(navigator.deviceMemory) && navigator.deviceMemory <= 4) ||
+  (Number.isFinite(navigator.hardwareConcurrency) && navigator.hardwareConcurrency <= 4)
+);
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const FEEDBACK_STORAGE_KEY = 'firesky:daily-feedback:v1';
+const SETTINGS_STORAGE_KEY = 'firesky:mobile-settings:v1';
+const SUNSET_ALERT_IDS = [7101, 7102];
+const SUNSET_ALERT_THRESHOLD = 70;
 
 function roundedCoordinate(value, step) {
   const rounded = Math.round(Number(value) / step) * step;
@@ -76,30 +89,63 @@ function cacheSet(key, value) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isRetryableNetworkError(err) {
+  if (!err) return false;
+  if (err.retryable) return true;
+  const message = String(err.message ?? '').toLowerCase();
+  return (
+    message.includes('timed out') ||
+    message.includes('networkerror') ||
+    message.includes('failed to fetch') ||
+    message.includes('network request')
+  );
+}
+
 async function fetchJson(url, errorLabel, timeoutMs = REQUEST_TIMEOUT_MS) {
   if (pendingJsonRequests.has(url)) return pendingJsonRequests.get(url);
 
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-  const request = fetch(url, { signal: controller.signal })
-    .then(async (response) => {
-      if (!response.ok) {
-        const retryAfter = response.headers.get('Retry-After');
-        const suffix = retryAfter ? `; retry after ${retryAfter}s` : '';
-        throw new Error(`${errorLabel} request failed (${response.status}${suffix})`);
+  const maxAttempts = 2;
+  const request = (async () => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) {
+          const retryAfter = response.headers.get('Retry-After');
+          const suffix = retryAfter ? `; retry after ${retryAfter}s` : '';
+          const err = new Error(`${errorLabel} request failed (${response.status}${suffix})`);
+          err.retryable = RETRYABLE_STATUS_CODES.has(response.status);
+          throw err;
+        }
+        return await response.json();
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          const timeoutErr = new Error(`${errorLabel} request timed out`);
+          timeoutErr.retryable = true;
+          if (attempt < maxAttempts) {
+            await sleep(300 * attempt);
+            continue;
+          }
+          throw timeoutErr;
+        }
+        if (attempt < maxAttempts && isRetryableNetworkError(err)) {
+          await sleep(300 * attempt);
+          continue;
+        }
+        throw err;
+      } finally {
+        window.clearTimeout(timeout);
       }
-      return response.json();
-    })
-    .catch((err) => {
-      if (err.name === 'AbortError') {
-        throw new Error(`${errorLabel} request timed out`);
-      }
-      throw err;
-    })
-    .finally(() => {
-      window.clearTimeout(timeout);
+    }
+    throw new Error(`${errorLabel} request failed`);
+  })().finally(() => {
       pendingJsonRequests.delete(url);
-    });
+  });
 
   pendingJsonRequests.set(url, request);
   return request;
@@ -293,14 +339,7 @@ function findEventAltitudeTime(eventDate, targetAltitude, latitude, longitude, m
   const oneHour = 60 * 60 * 1000;
   const before = new Date(eventDate.getTime() - 3 * oneHour);
   const after = new Date(eventDate.getTime() + 3 * oneHour);
-  if (mode === 'sunrise') {
-    return targetAltitude < 0
-      ? findSunAltitudeCrossing(before, eventDate, targetAltitude, latitude, longitude)
-      : findSunAltitudeCrossing(eventDate, after, targetAltitude, latitude, longitude);
-  }
-  return targetAltitude > 0
-    ? findSunAltitudeCrossing(before, eventDate, targetAltitude, latitude, longitude)
-    : findSunAltitudeCrossing(eventDate, after, targetAltitude, latitude, longitude);
+  return findSunAltitudeCrossing(before, after, targetAltitude, latitude, longitude);
 }
 
 function peakColorAltitudeBand(window, air = {}, mode) {
@@ -411,8 +450,8 @@ function pickWindow(hourly, centerDate, mode, utcOffsetSeconds = null) {
     mode,
     center,
     indexes,
-    start: times[indexes[0]],
-    end: times[indexes[indexes.length - 1]],
+    start: times[indexes[0]] ?? null,
+    end: times[indexes[indexes.length - 1]] ?? null,
     cloudTotal,
     cloudLow,
     cloudMid,
@@ -601,10 +640,12 @@ function computeWindowScore(window, air, mode, context = {}) {
 function formatTime(value, timeZone, utcOffsetSeconds = null) {
   if (!value) return '--:--';
   const date = typeof value === 'string' && utcOffsetSeconds != null ? localIsoToUtcDate(value, utcOffsetSeconds) : new Date(value);
+  if (Number.isNaN(date.getTime())) return '--:--';
   return new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone }).format(date);
 }
 
 function formatRange(start, end, timeZone, utcOffsetSeconds = null) {
+  if (!start || !end) return '--';
   return `${formatTime(start, timeZone, utcOffsetSeconds)}-${formatTime(end, timeZone, utcOffsetSeconds)}`;
 }
 
@@ -618,7 +659,10 @@ function formatMinutes(totalMinutes) {
 
 function formatDuration(start, end) {
   if (!start || !end) return '--';
-  return formatMinutes((new Date(end).getTime() - new Date(start).getTime()) / 60000);
+  const startTime = new Date(start).getTime();
+  const endTime = new Date(end).getTime();
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) return '--';
+  return formatMinutes((endTime - startTime) / 60000);
 }
 
 function formatTotalDuration(windows) {
@@ -645,6 +689,14 @@ function preferredForecastMode(forecast) {
 
 function formatPercent(value) {
   return `${Math.round(value ?? 0)}%`;
+}
+
+function formatScoreRange(a, b) {
+  const values = [a, b].filter((value) => Number.isFinite(value)).map((value) => Math.round(value));
+  if (!values.length) return '--';
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  return low === high ? `${low}%` : `${low}-${high}%`;
 }
 
 function describeScore(score) {
@@ -678,6 +730,10 @@ function mergeMlScore(ruleScore, mlScore) {
 
 function scoreModelLabel(score) {
   return score?.ml ? 'ML v2' : 'Rules';
+}
+
+function ruleFallbackScore(score) {
+  return score?.ml?.fallbackProbability ?? score?.probability ?? 0;
 }
 
 function debugScore(score) {
@@ -776,7 +832,7 @@ function makeForecastUrl(place) {
   return `/api/forecast?${params}`;
 }
 
-const GRID_STEPS = 15;
+const GRID_STEPS = IS_LOW_POWER_DEVICE ? 11 : 15;
 const GRID_LAT_SPAN_DEG = 2.2;
 const GRID_LON_SPAN_DEG = 4.4;
 const SOLAR_CORRIDOR_MAX_KM = 430;
@@ -799,27 +855,44 @@ function createGridPlaces(place) {
 }
 
 function airSnapshotAt(air, targetDate, utcOffsetSeconds = 0) {
-  const index = nearestIndex(air.hourly?.time ?? [], targetDate ?? new Date(), utcOffsetSeconds);
+  const index = nearestIndex(air?.hourly?.time ?? [], targetDate ?? new Date(), utcOffsetSeconds);
   return {
-    us_aqi: air.hourly?.us_aqi?.[index] ?? air.current?.us_aqi,
-    pm2_5: air.hourly?.pm2_5?.[index] ?? air.current?.pm2_5,
-    pm10: air.hourly?.pm10?.[index] ?? air.current?.pm10,
-    aerosol_optical_depth: air.hourly?.aerosol_optical_depth?.[index] ?? air.current?.aerosol_optical_depth,
-    dust: air.hourly?.dust?.[index] ?? air.current?.dust
+    us_aqi: air?.hourly?.us_aqi?.[index] ?? air?.current?.us_aqi,
+    pm2_5: air?.hourly?.pm2_5?.[index] ?? air?.current?.pm2_5,
+    pm10: air?.hourly?.pm10?.[index] ?? air?.current?.pm10,
+    aerosol_optical_depth: air?.hourly?.aerosol_optical_depth?.[index] ?? air?.current?.aerosol_optical_depth,
+    dust: air?.hourly?.dust?.[index] ?? air?.current?.dust
   };
 }
 
 function currentAirSnapshot(air) {
   return {
-    us_aqi: air.current?.us_aqi,
-    pm2_5: air.current?.pm2_5,
-    pm10: air.current?.pm10,
-    aerosol_optical_depth: air.current?.aerosol_optical_depth,
-    dust: air.current?.dust
+    us_aqi: air?.current?.us_aqi,
+    pm2_5: air?.current?.pm2_5,
+    pm10: air?.current?.pm10,
+    aerosol_optical_depth: air?.current?.aerosol_optical_depth,
+    dust: air?.current?.dust
   };
 }
 
-function buildForecast({ weather, air, ml }) {
+function isUsableWeatherPayload(weather) {
+  return Boolean(
+    weather &&
+      Array.isArray(weather.hourly?.time) &&
+      weather.hourly.time.length > 0 &&
+      weather.daily?.sunrise?.[0] &&
+      weather.daily?.sunset?.[0] &&
+      Number.isFinite(Number(weather.latitude)) &&
+      Number.isFinite(Number(weather.longitude))
+  );
+}
+
+function isUsableForecastBundle(bundle) {
+  return isUsableWeatherPayload(bundle?.weather);
+}
+
+function buildForecast({ weather, air = {}, ml }) {
+  if (!isUsableWeatherPayload(weather)) throw new Error('Weather data is incomplete');
   const utcOffsetSeconds = weather.utc_offset_seconds ?? 0;
   const timeZone = weather.timezone || undefined;
   const sunrise = localIsoToUtcDate(weather.daily?.sunrise?.[0], utcOffsetSeconds);
@@ -877,15 +950,16 @@ async function fetchForecast(place, { force = false } = {}) {
   const key = cacheKey('forecast', place);
   if (!force) {
     const cached = cacheGet(key);
-    if (cached) return buildForecast(cached);
+    if (isUsableForecastBundle(cached)) return buildForecast(cached);
   }
   try {
     const bundle = await fetchJson(makeForecastUrl(place), 'Forecast');
+    if (!isUsableForecastBundle(bundle)) throw new Error('Forecast response was incomplete');
     cacheSet(key, bundle);
     return buildForecast(bundle);
   } catch (err) {
     const stale = cacheGet(key, STALE_TTL_MS);
-    if (stale) return buildForecast(stale);
+    if (isUsableForecastBundle(stale)) return buildForecast(stale);
     throw new Error('Weather data is temporarily unavailable');
   }
 }
@@ -1076,6 +1150,134 @@ async function geocodeCity(query) {
   return results;
 }
 
+function loadFeedbackStore() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(FEEDBACK_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveFeedbackStore(store) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(store));
+  } catch {
+    /* ignore feedback persistence issues */
+  }
+}
+
+function loadMobileSettings() {
+  if (typeof window === 'undefined') return { notificationsEnabled: true };
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return { notificationsEnabled: true };
+    const parsed = JSON.parse(raw);
+    return {
+      notificationsEnabled: parsed?.notificationsEnabled !== false
+    };
+  } catch {
+    return { notificationsEnabled: true };
+  }
+}
+
+function saveMobileSettings(settings) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    /* ignore settings persistence issues */
+  }
+}
+
+function forecastDayKey(forecast) {
+  if (!forecast?.sunset) return null;
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: forecast.timeZone || 'UTC',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  return formatter.format(forecast.sunset);
+}
+
+async function scheduleSunsetAlerts({ enabled, forecast, placeName }) {
+  try {
+    const [{ Capacitor }, { LocalNotifications }] = await Promise.all([
+      import('@capacitor/core'),
+      import('@capacitor/local-notifications')
+    ]);
+    if (!Capacitor.isNativePlatform()) return;
+
+    await LocalNotifications.cancel({
+      notifications: SUNSET_ALERT_IDS.map((id) => ({ id }))
+    });
+
+    if (!enabled || !forecast?.sunset || !forecast?.scores?.sunset) return;
+    const probability = Math.round(forecast.scores.sunset.probability ?? 0);
+    if (probability < SUNSET_ALERT_THRESHOLD) return;
+
+    const permission = await LocalNotifications.checkPermissions();
+    if (permission.display !== 'granted') {
+      const requested = await LocalNotifications.requestPermissions();
+      if (requested.display !== 'granted') return;
+    }
+
+    const sunsetTs = forecast.sunset.getTime();
+    const reminders = [
+      { id: SUNSET_ALERT_IDS[0], offsetMs: 2 * 60 * 60 * 1000, label: '2h' },
+      { id: SUNSET_ALERT_IDS[1], offsetMs: 1 * 60 * 60 * 1000, label: '1h' }
+    ]
+      .map(({ id, offsetMs, label }) => ({
+        id,
+        label,
+        at: new Date(sunsetTs - offsetMs)
+      }))
+      .filter((entry) => entry.at.getTime() > Date.now() + 15000);
+
+    if (!reminders.length) return;
+
+    await LocalNotifications.schedule({
+      notifications: reminders.map((entry) => ({
+        id: entry.id,
+        title: 'FireSky Sunset Alert',
+        body: `${placeName}: sunset chance ${probability}% (${entry.label} before sunset).`,
+        schedule: { at: entry.at },
+        smallIcon: 'ic_stat_icon_config_sample',
+        sound: undefined
+      }))
+    });
+  } catch {
+    /* notification scheduling should not block forecast loading */
+  }
+}
+
+async function requestNativeLocation() {
+  try {
+    const [{ Capacitor }, { Geolocation }] = await Promise.all([
+      import('@capacitor/core'),
+      import('@capacitor/geolocation')
+    ]);
+    if (!Capacitor.isNativePlatform()) return null;
+    const permission = await Geolocation.checkPermissions();
+    if (permission.location !== 'granted') {
+      const asked = await Geolocation.requestPermissions();
+      if (asked.location !== 'granted') return null;
+    }
+    return Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 60000
+    });
+  } catch {
+    return null;
+  }
+}
+
 function GlassCard({ children, className = '', delay = 0 }) {
   return (
     <motion.section
@@ -1238,8 +1440,8 @@ function MetricRail({ activeMode, data }) {
   const activeAir = data.airSnapshots?.[activeMode] ?? data.airSnapshot;
   const items = [
     ['Now', weather, CloudSun],
-    ['Sunset', `${Math.round(data.scores.sunset.probability)}-${Math.min(99, Math.round(data.scores.sunset.quality + 8))}%`, SunMedium],
-    ['Sunrise', `${Math.round(data.scores.sunrise.probability)}-${Math.min(99, Math.round(data.scores.sunrise.quality + 8))}%`, MoonStar],
+    ['Sunset', formatScoreRange(data.scores.sunset.probability, data.scores.sunset.quality + 8), SunMedium],
+    ['Sunrise', formatScoreRange(data.scores.sunrise.probability, data.scores.sunrise.quality + 8), MoonStar],
     ['Cloud Screen', `${Math.round(score.factors.cloudScreen ?? 0)}%`, Sparkles],
     ['Corridor', `${Math.round(score.factors.solarCorridor ?? 0)}%`, Aperture],
     ['Window AQI', activeAir?.us_aqi != null ? `${Math.round(activeAir.us_aqi)}` : '--']
@@ -1588,9 +1790,10 @@ function MapLibreHeatCanvasLayer({ map, canvasRef, samples, type, onReady }) {
       const cssWidth = mapCanvas.clientWidth;
       const cssHeight = mapCanvas.clientHeight;
       if (!cssWidth || !cssHeight) return;
+      const lowPowerMultiplier = IS_LOW_POWER_DEVICE ? 1.35 : 1;
       const resolution = quality === 'fast'
-        ? (cssWidth > 1400 ? 3 : 2.35)
-        : (cssWidth > 1400 ? 1.65 : 1.35);
+        ? (cssWidth > 1400 ? 3 : 2.35) * lowPowerMultiplier
+        : (cssWidth > 1400 ? 1.65 : 1.35) * lowPowerMultiplier;
       const width = Math.max(1, Math.round(cssWidth / resolution));
       const height = Math.max(1, Math.round(cssHeight / resolution));
       canvas.width = width;
@@ -2010,12 +2213,16 @@ function SearchPanel({ onSelect }) {
 }
 
 function App() {
+  const savedSettings = useMemo(() => loadMobileSettings(), []);
   const [place, setPlace] = useState(DEFAULT_PLACE);
   const [activeMode, setActiveMode] = useState('sunset');
   const [data, setData] = useState(null);
   const [grid, setGrid] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(savedSettings.notificationsEnabled);
+  const [feedbackStore, setFeedbackStore] = useState(() => loadFeedbackStore());
   const [showSearch, setShowSearch] = useState(false);
   const loadSeq = useRef(0);
   const userSelectedModeRef = useRef(false);
@@ -2075,6 +2282,25 @@ function App() {
     return () => window.clearInterval(id);
   }, [place, activeMode]);
 
+  useEffect(() => {
+    function markOnline() {
+      setIsOffline(false);
+    }
+    function markOffline() {
+      setIsOffline(true);
+    }
+    window.addEventListener('online', markOnline);
+    window.addEventListener('offline', markOffline);
+    return () => {
+      window.removeEventListener('online', markOnline);
+      window.removeEventListener('offline', markOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    saveMobileSettings({ notificationsEnabled });
+  }, [notificationsEnabled]);
+
   function selectPlace(nextPlace) {
     setPlace(nextPlace);
     setShowSearch(false);
@@ -2086,7 +2312,20 @@ function App() {
     setActiveMode(mode);
   }
 
-  function locateMe() {
+  async function locateMe() {
+    setError('');
+    const nativePosition = await requestNativeLocation();
+    if (nativePosition) {
+      const nextPlace = {
+        name: 'Current Location',
+        admin1: 'North America',
+        country_code: 'US',
+        latitude: +nativePosition.coords.latitude.toFixed(4),
+        longitude: +nativePosition.coords.longitude.toFixed(4)
+      };
+      selectPlace(nextPlace);
+      return;
+    }
     if (!navigator.geolocation) {
       setError('Geolocation is not supported by this browser');
       return;
@@ -2102,7 +2341,22 @@ function App() {
         };
         selectPlace(nextPlace);
       },
-      () => setError('Location permission was denied. Search a city instead.')
+      (geoError) => {
+        if (geoError?.code === 1) {
+          setError('Location permission was denied. Enable it in settings or search a city instead.');
+          return;
+        }
+        if (geoError?.code === 2) {
+          setError('Unable to determine your location right now. Please try again.');
+          return;
+        }
+        setError('Location request timed out. Search a city instead.');
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 60000
+      }
     );
   }
 
@@ -2110,7 +2364,6 @@ function App() {
   const activeWindow = data?.windows?.[activeMode];
   const activeAppearanceWindow = data?.appearanceWindow?.[activeMode];
   const activeAirSnapshot = data?.airSnapshots?.[activeMode] ?? data?.airSnapshot;
-  const activeModel = scoreModelLabel(active);
   const theme = data ? weatherTheme(data.current?.weather_code, data.current?.cloud_cover) : 'clear';
   const currentWeather = data ? weatherDescription(data.current?.weather_code, data.current?.cloud_cover) : 'Loading';
   const isNight = useMemo(() => {
@@ -2122,6 +2375,75 @@ function App() {
     if (!data) return null;
     return data.scores.sunset.probability >= data.scores.sunrise.probability ? 'sunset' : 'sunrise';
   }, [data]);
+  const sunsetDay = useMemo(() => forecastDayKey(data), [data]);
+  const sunsetFeedback = sunsetDay ? feedbackStore[sunsetDay] : null;
+  const recentSunsetFeedback = useMemo(
+    () => Object.values(feedbackStore)
+      .filter((item) => item?.day)
+      .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+      .slice(0, 7),
+    [feedbackStore]
+  );
+
+  useEffect(() => {
+    if (!data?.scores?.sunset || !sunsetDay) return;
+    setFeedbackStore((current) => {
+      const existing = current[sunsetDay] ?? {};
+      const next = {
+        ...current,
+        [sunsetDay]: {
+          ...existing,
+          probability: Math.round(data.scores.sunset.probability ?? 0),
+          day: sunsetDay,
+          place: title,
+          updatedAt: Date.now()
+        }
+      };
+      saveFeedbackStore(next);
+      return next;
+    });
+  }, [data?.scores?.sunset?.probability, sunsetDay, title]);
+
+  useEffect(() => {
+    scheduleSunsetAlerts({
+      enabled: notificationsEnabled,
+      forecast: data,
+      placeName: title
+    });
+  }, [notificationsEnabled, data?.sunset?.getTime?.(), data?.scores?.sunset?.probability, title]);
+
+  function updateSunsetFeedback(patch) {
+    if (!sunsetDay || !data?.scores?.sunset) return;
+    setFeedbackStore((current) => {
+      const next = {
+        ...current,
+        [sunsetDay]: {
+          ...(current[sunsetDay] ?? {}),
+          day: sunsetDay,
+          place: title,
+          probability: Math.round(data.scores.sunset.probability ?? 0),
+          ...patch,
+          updatedAt: Date.now()
+        }
+      };
+      saveFeedbackStore(next);
+      return next;
+    });
+  }
+
+  function toggleSunsetReaction(sentiment) {
+    const currentSentiment = sunsetFeedback?.sentiment ?? null;
+    updateSunsetFeedback({ sentiment: currentSentiment === sentiment ? null : sentiment });
+  }
+
+  function toggleSunsetAccuracy(accurate) {
+    const currentAccuracy = sunsetFeedback?.accurate;
+    updateSunsetFeedback({ accurate: currentAccuracy === accurate ? null : accurate });
+  }
+
+  function toggleNotifications() {
+    setNotificationsEnabled((value) => !value);
+  }
 
   return (
     <main className={`weather-${theme} ${isNight ? 'is-night' : 'is-day'}`}>
@@ -2151,6 +2473,9 @@ function App() {
             <div className="quick-actions">
               <button onClick={locateMe} title="Locate"><LocateFixed size={18} /></button>
               <button onClick={() => load(place, activeMode, { force: true })} title="Refresh"><RefreshCw size={18} /></button>
+              <button onClick={toggleNotifications} title={notificationsEnabled ? 'Disable sunset alerts' : 'Enable sunset alerts'} className={notificationsEnabled ? 'selected' : ''}>
+                {notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}
+              </button>
             </div>
           </div>
         </div>
@@ -2162,6 +2487,13 @@ function App() {
             </motion.div>
           ) : null}
         </AnimatePresence>
+
+        {isOffline ? (
+          <GlassCard className="notice network-notice">
+            <AlertTriangle size={20} />
+            <span>You are offline. Cached forecasts are shown when available.</span>
+          </GlassCard>
+        ) : null}
 
         {error ? (
           <GlassCard className="notice">
@@ -2181,7 +2513,7 @@ function App() {
               <div className="map-grid">
                 <GlassCard delay={0.04}>
                   <h2>
-                    <span>Probability</span>
+                    <span>ML Chance</span>
                     <span>{activeMode === 'sunset' ? 'Sunset' : 'Sunrise'}</span>
                   </h2>
                   <HeatMap place={place} samples={grid} type="probability" />
@@ -2199,8 +2531,7 @@ function App() {
                 <div className="hero-copy">
                   <div className="eyebrow">
                     <Sparkles size={14} />
-                    <span>Today's Fire Sky Forecast · North America</span>
-                    <b className={active?.ml ? 'model-badge ml' : 'model-badge fallback'}>{activeModel}</b>
+                    <span>Today's Fire Sky Forecast</span>
                   </div>
                   <div className="current-weather-line">
                     <strong>{Math.round(data.current?.temperature_2m ?? 0)}°</strong>
@@ -2279,7 +2610,7 @@ function App() {
                 <div className="section-title">
                   <span>Window Forecast · Solar Corridor</span>
                   <strong className="score-pair">
-                    <span><small>{active?.ml ? 'ML Chance' : 'Probability'}</small>{formatPercent(active.probability)}</span>
+                    <span><small>Rule Score</small>{formatPercent(ruleFallbackScore(active))}</span>
                     <i />
                     <span><small>Intensity</small>{formatPercent(active.quality)}</span>
                   </strong>
@@ -2290,15 +2621,58 @@ function App() {
                   <div><strong>{activeAirSnapshot?.us_aqi != null ? Math.round(activeAirSnapshot.us_aqi) : '--'}</strong><span>Window AQI</span></div>
                   <div><strong>{((activeWindow.visibility ?? 0) / 1000).toFixed(1)}km</strong><span>Window Visibility</span></div>
                 </div>
-                <div className="model-note">
-                  <Check size={14} />
-                  <span>
-                    {active?.ml
-                      ? `Using ${data.ml?.modelVersion || 'firesky-v2'} (${data.ml?.calibration || 'online blend'}); rule score fallback was ${formatPercent(active.ml.fallbackProbability)}.`
-                      : 'ML service is not configured or unavailable; using the local rule score.'}
-                  </span>
-                </div>
                 <FactorBars score={active} />
+                <div className="feedback-panel">
+                  <div className="feedback-head">
+                    <span>Daily Sunset Feedback</span>
+                    <b>{sunsetDay || '--'}</b>
+                  </div>
+                  <div className="feedback-meta">
+                    <span>Predicted chance</span>
+                    <strong>{data?.scores?.sunset ? `${Math.round(data.scores.sunset.probability)}%` : '--'}</strong>
+                  </div>
+                  <div className="feedback-actions">
+                    <button
+                      type="button"
+                      className={sunsetFeedback?.sentiment === 'like' ? 'selected' : ''}
+                      onClick={() => toggleSunsetReaction('like')}
+                    >
+                      <ThumbsUp size={15} />
+                      <span>Like</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={sunsetFeedback?.sentiment === 'dislike' ? 'selected' : ''}
+                      onClick={() => toggleSunsetReaction('dislike')}
+                    >
+                      <ThumbsDown size={15} />
+                      <span>Dislike</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={sunsetFeedback?.accurate === true ? 'selected' : ''}
+                      onClick={() => toggleSunsetAccuracy(true)}
+                    >
+                      Accurate
+                    </button>
+                    <button
+                      type="button"
+                      className={sunsetFeedback?.accurate === false ? 'selected' : ''}
+                      onClick={() => toggleSunsetAccuracy(false)}
+                    >
+                      Not Accurate
+                    </button>
+                  </div>
+                  <div className="feedback-history">
+                    {recentSunsetFeedback.length ? recentSunsetFeedback.map((item) => (
+                      <div key={item.day}>
+                        <span>{item.day}</span>
+                        <strong>{Number.isFinite(item.probability) ? `${item.probability}%` : '--'}</strong>
+                        <small>{item.accurate == null ? 'Pending' : (item.accurate ? 'Accurate' : 'Not Accurate')}</small>
+                      </div>
+                    )) : <p>No daily sunset feedback yet.</p>}
+                  </div>
+                </div>
                 <div className="verdict">
                   <AlertTriangle size={18} />
                   <span>
@@ -2320,6 +2694,27 @@ function App() {
       </section>
     </main>
   );
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then((registration) => {
+        registration.addEventListener('updatefound', () => {
+          const installing = registration.installing;
+          if (!installing) return;
+          installing.addEventListener('statechange', () => {
+            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+              const shouldReload = window.confirm('A new FireSky version is ready. Reload now?');
+              if (shouldReload) window.location.reload();
+            }
+          });
+        });
+      })
+      .catch(() => {
+        /* service worker registration should not block app startup */
+      });
+  });
 }
 
 createRoot(document.getElementById('root')).render(<App />);
