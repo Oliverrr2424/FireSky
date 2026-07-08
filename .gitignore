@@ -20,3 +20,8 @@ __pycache__/
 data_sources/modeling/
 data_sources/modeling_v2/
 data_sources/raw/
+
+# Xcode/iOS local build artifacts
+DerivedData/
+build/
+*.xcuserdata/
