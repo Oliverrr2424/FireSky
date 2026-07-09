@@ -18,7 +18,11 @@
     "mobile:android:bundle": "cd android && gradlew.bat bundleRelease",
     "mobile:android:assemble": "cd android && gradlew.bat assembleRelease",
     "mobile:ios:pods": "cd ios/App && pod install",
-    "mobile:preflight": "npm run mobile:build && npm run mobile:doctor"
+    "mobile:preflight": "npm run mobile:build && npm run mobile:doctor",
+    "mobile:wrangler:dev": "wrangler pages dev dist --port 8788 --ip 0.0.0.0",
+    "mobile:build:local": "cross-env VITE_API_BASE_URL=http://10.0.2.2:8788 vite build && npx cap sync android",
+    "mobile:android:install": "cd android && ./gradlew installDebug",
+    "mobile:android:launch": "adb shell am start -n com.firesky.app/.MainActivity"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
@@ -36,5 +40,9 @@
     "react": "latest",
     "react-dom": "latest",
     "vite": "latest"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "wrangler": "^4.0.0"
   }
 }

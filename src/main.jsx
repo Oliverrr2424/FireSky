@@ -51,15 +51,16 @@ const SUNSET_ALERT_IDS = [7101, 7102];
 const SUNSET_ALERT_THRESHOLD = 70;
 // Capacitor's native WebView serves bundled assets from https://localhost
 // (see capacitor.config.json's androidScheme), which has no Cloudflare Pages
-// Functions behind it. Point relative /api/* calls at the deployed API in
-// that case; keep them relative for the real web app / local dev servers.
+// Functions behind it. Point relative /api/* calls at the deployed API (or
+// VITE_API_BASE_URL, e.g. http://10.0.2.2:8788 for a local wrangler dev
+// server reachable from the Android emulator) in that case; keep them
+// relative for the real web app / local dev servers.
 const API_BASE_URL = (() => {
   if (typeof window === 'undefined') return '';
   const { protocol, hostname } = window.location;
-  if (hostname === 'localhost' && (protocol === 'https:' || protocol === 'capacitor:')) {
-    return 'https://fireskychase.pages.dev';
-  }
-  return '';
+  const isNativeShell = hostname === 'localhost' && (protocol === 'https:' || protocol === 'capacitor:');
+  if (!isNativeShell) return '';
+  return import.meta.env.VITE_API_BASE_URL || 'https://fireskychase.pages.dev';
 })();
 
 function roundedCoordinate(value, step) {

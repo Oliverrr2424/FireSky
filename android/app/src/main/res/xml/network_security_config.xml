@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow plain HTTP only to the Android emulator's host-loopback alias,
+         so `npm run mobile:build:local` (VITE_API_BASE_URL=http://10.0.2.2:PORT)
+         can hit a local `wrangler pages dev` server. Everything else
+         (including the production domain) still requires HTTPS. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
