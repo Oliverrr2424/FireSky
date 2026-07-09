@@ -1514,7 +1514,7 @@ function colorStop(value, type) {
 
 // Gaussian RBF interpolation keeps the field continuous, while a modest sigma
 // preserves regional boundaries instead of washing everything into one color.
-const RBF_SIGMA = 0.18;
+const RBF_SIGMA = 0.38;
 const RBF_SIG2_INV = 1 / (2 * RBF_SIGMA * RBF_SIGMA);
 
 function interpolateSample(lat, lon, samples, type) {
@@ -1805,8 +1805,8 @@ function MapLibreHeatCanvasLayer({ map, canvasRef, samples, type, onReady }) {
       if (!cssWidth || !cssHeight) return;
       const lowPowerMultiplier = IS_LOW_POWER_DEVICE ? 1.35 : 1;
       const resolution = quality === 'fast'
-        ? (cssWidth > 1400 ? 3 : 2.35) * lowPowerMultiplier
-        : (cssWidth > 1400 ? 1.65 : 1.35) * lowPowerMultiplier;
+        ? (cssWidth > 1400 ? 2.4 : 1.9) * lowPowerMultiplier
+        : (cssWidth > 1400 ? 1.2 : 0.95) * lowPowerMultiplier;
       const width = Math.max(1, Math.round(cssWidth / resolution));
       const height = Math.max(1, Math.round(cssHeight / resolution));
       canvas.width = width;
