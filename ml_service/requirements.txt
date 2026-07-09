@@ -1,0 +1,11 @@
+astral
+fastapi
+joblib
+lightgbm
+numpy
+pandas
+pydantic
+scikit-learn
+starlette
+uvicorn[standard]
+xgboost

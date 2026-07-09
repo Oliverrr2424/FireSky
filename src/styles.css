@@ -58,7 +58,11 @@ button {
 
 main {
   min-height: 100svh;
-  padding: 28px;
+  padding:
+    calc(28px + env(safe-area-inset-top))
+    calc(28px + env(safe-area-inset-right))
+    calc(28px + env(safe-area-inset-bottom))
+    calc(28px + env(safe-area-inset-left));
   position: relative;
   overflow-x: hidden;
   background:
@@ -131,7 +135,7 @@ main.weather-fog .app-shell {
 
 .app-shell {
   width: min(100%, 1440px);
-  min-height: calc(100vh - 56px);
+  min-height: calc(100vh - 56px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   margin: 0 auto;
   position: relative;
   z-index: 1;
@@ -303,6 +307,12 @@ main.is-night .app-shell {
   place-items: center;
 }
 
+.quick-actions button.selected {
+  background: var(--glass-selected);
+  border-color: var(--glass-border-strong);
+  color: var(--text-primary);
+}
+
 .mode-toggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(92px, 1fr));
@@ -438,6 +448,13 @@ main.is-night .app-shell {
   margin-bottom: 12px;
 }
 
+.network-notice {
+  border-color: rgba(250, 204, 21, 0.5);
+  background:
+    linear-gradient(180deg, rgba(250, 204, 21, 0.14), rgba(250, 204, 21, 0.05) 58%),
+    var(--glass-panel);
+}
+
 .loading {
   position: relative;
   z-index: 2;
@@ -507,12 +524,36 @@ main.is-night .app-shell {
 .eyebrow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.2px;
+}
+
+.model-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 10px;
+  letter-spacing: 0.7px;
+}
+
+.model-badge.ml {
+  border-color: rgba(250, 204, 21, 0.42);
+  background: rgba(250, 204, 21, 0.14);
+}
+
+.model-badge.fallback {
+  border-color: rgba(148, 163, 184, 0.38);
+  background: rgba(15, 23, 42, 0.18);
 }
 
 h1 {
@@ -1136,22 +1177,30 @@ h2 span:last-child {
 }
 
 .section-title {
+  --section-score-size: clamp(18px, 2.15vw, 20px);
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
   font-family: var(--font-display);
-  color: var(--text-muted);
   margin-bottom: 18px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+}
+
+.section-title > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--section-score-size);
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.15;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .section-title strong {
   font-family: var(--font-display);
   color: #fff;
-  font-size: 20px;
+  font-size: var(--section-score-size);
   font-weight: 700;
   text-transform: none;
   letter-spacing: 0;
@@ -1228,10 +1277,144 @@ h2 span:last-child {
   font-size: 12px;
 }
 
+.model-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.model-note svg {
+  flex: 0 0 auto;
+  color: #facc15;
+}
+
 .factor-bars {
   display: grid;
   gap: 12px;
   margin: 18px 0;
+}
+
+.feedback-panel {
+  margin: 18px 0 6px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-control);
+  backdrop-filter: var(--glass-control-blur);
+  -webkit-backdrop-filter: var(--glass-control-blur);
+}
+
+.feedback-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.feedback-head span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+.feedback-head b {
+  font-family: var(--font-display);
+  color: #fff;
+  font-size: 13px;
+}
+
+.feedback-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.feedback-meta span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.feedback-meta strong {
+  font-family: var(--font-display);
+  color: #fff;
+  font-size: 16px;
+}
+
+.feedback-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.feedback-actions button {
+  min-height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.feedback-actions button.selected {
+  background: var(--glass-selected);
+  border-color: var(--glass-border-strong);
+  color: var(--text-primary);
+}
+
+.feedback-history {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.feedback-history div {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.feedback-history span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.feedback-history strong {
+  font-family: var(--font-display);
+  color: #fff;
+  font-size: 12px;
+}
+
+.feedback-history small {
+  justify-self: end;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.feedback-history p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .factor div {
@@ -1343,7 +1526,11 @@ h2 span:last-child {
 
 @media (max-width: 720px) {
   main {
-    padding: 0;
+    padding:
+      env(safe-area-inset-top)
+      env(safe-area-inset-right)
+      env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
   }
 
   .app-shell {
@@ -1508,6 +1695,7 @@ h2 span:last-child {
   }
 
   .section-title {
+    --section-score-size: clamp(17px, 4.2vw, 18px);
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
@@ -1529,10 +1717,6 @@ h2 span:last-child {
     text-align: left;
     min-height: 58px;
     align-content: center;
-  }
-
-  .section-title strong {
-    font-size: 18px;
   }
 
   .data-pills {
@@ -1562,6 +1746,10 @@ h2 span:last-child {
     line-height: 1.4;
     padding: 0 10px 4px;
     text-align: center;
+  }
+
+  .feedback-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
 }

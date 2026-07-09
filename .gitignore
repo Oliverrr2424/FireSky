@@ -3,6 +3,11 @@ dist/
 .vite/
 *.local
 
+# Android release signing secrets
+android/keystore.properties
+android/app/*.jks
+android/app/*.keystore
+
 # Lockfile omitted: cross-platform optional deps cause npm ci mismatch on CI
 package-lock.json
 

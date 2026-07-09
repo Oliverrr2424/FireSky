@@ -5,3 +5,6 @@ compatibility_date = "2026-04-30"
 [[kv_namespaces]]
 binding = "FIRESKY_CACHE"
 id = "dc605f9c3d0b4e429709b17dd91e802a"
+
+[vars]
+ML_FORECAST_URL = "https://oliverrrnh-firesky-v2-inference.hf.space/predict"
