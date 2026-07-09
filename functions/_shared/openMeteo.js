@@ -45,6 +45,10 @@ export function jsonResponse(value, init = {}) {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'public, max-age=60',
+      // Public, unauthenticated read-only weather data: allow cross-origin
+      // access so the packaged mobile apps (Capacitor WebView origin is
+      // https://localhost, not this Pages domain) can call it directly.
+      'Access-Control-Allow-Origin': '*',
       ...(init.headers ?? {})
     }
   });

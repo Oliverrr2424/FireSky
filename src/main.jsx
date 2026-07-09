@@ -49,6 +49,18 @@ const FEEDBACK_STORAGE_KEY = 'firesky:daily-feedback:v1';
 const SETTINGS_STORAGE_KEY = 'firesky:mobile-settings:v1';
 const SUNSET_ALERT_IDS = [7101, 7102];
 const SUNSET_ALERT_THRESHOLD = 70;
+// Capacitor's native WebView serves bundled assets from https://localhost
+// (see capacitor.config.json's androidScheme), which has no Cloudflare Pages
+// Functions behind it. Point relative /api/* calls at the deployed API in
+// that case; keep them relative for the real web app / local dev servers.
+const API_BASE_URL = (() => {
+  if (typeof window === 'undefined') return '';
+  const { protocol, hostname } = window.location;
+  if (hostname === 'localhost' && (protocol === 'https:' || protocol === 'capacitor:')) {
+    return 'https://fireskychase.pages.dev';
+  }
+  return '';
+})();
 
 function roundedCoordinate(value, step) {
   const rounded = Math.round(Number(value) / step) * step;
@@ -829,7 +841,7 @@ function makeForecastUrl(place) {
     lat: place.latitude,
     lon: place.longitude
   });
-  return `/api/forecast?${params}`;
+  return `${API_BASE_URL}/api/forecast?${params}`;
 }
 
 const GRID_STEPS = IS_LOW_POWER_DEVICE ? 11 : 15;
@@ -1128,7 +1140,7 @@ async function fetchGrid(place, mode, { force = false } = {}) {
       lat: place.latitude,
       lon: place.longitude
     });
-    const payload = await fetchJson(`/api/grid?${params}`, 'Regional grid', GRID_REQUEST_TIMEOUT_MS);
+    const payload = await fetchJson(`${API_BASE_URL}/api/grid?${params}`, 'Regional grid', GRID_REQUEST_TIMEOUT_MS);
     cacheSet(key, payload);
     return buildGrid(payload, place, mode);
   } catch (err) {
@@ -1145,7 +1157,7 @@ async function geocodeCity(query) {
   const cached = cacheGet(key, GEOCODE_CACHE_TTL_MS);
   if (cached) return cached;
   const params = new URLSearchParams({ q: normalizedQuery });
-  const results = await fetchJson(`/api/geocode?${params}`, 'Location search');
+  const results = await fetchJson(`${API_BASE_URL}/api/geocode?${params}`, 'Location search');
   cacheSet(key, results);
   return results;
 }
