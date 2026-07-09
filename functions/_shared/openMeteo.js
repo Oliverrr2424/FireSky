@@ -227,7 +227,7 @@ export function makeForecastUrl(place) {
     hourly: WEATHER_VARS,
     daily: DAILY_VARS,
     current: 'temperature_2m,relative_humidity_2m,cloud_cover,weather_code,wind_speed_10m',
-    forecast_days: '1',
+    forecast_days: '7',
     timezone: 'auto',
     wind_speed_unit: 'kmh'
   });
@@ -240,7 +240,7 @@ export function makeAirUrl(place) {
     longitude: String(place.longitude),
     hourly: AIR_VARS,
     current: 'us_aqi,pm2_5,pm10,aerosol_optical_depth,dust',
-    forecast_days: '1',
+    forecast_days: '7',
     timezone: 'auto'
   });
   return `https://air-quality-api.open-meteo.com/v1/air-quality?${params}`;

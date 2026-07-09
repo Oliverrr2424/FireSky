@@ -19,7 +19,9 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Share2,
   Sparkles,
+  Star,
   SunMedium,
   ThumbsDown,
   ThumbsUp
@@ -47,6 +49,7 @@ const IS_LOW_POWER_DEVICE = typeof navigator !== 'undefined' && (
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const FEEDBACK_STORAGE_KEY = 'firesky:daily-feedback:v1';
 const SETTINGS_STORAGE_KEY = 'firesky:mobile-settings:v1';
+const INSTALLATION_STORAGE_KEY = 'firesky:installation-id:v1';
 const SUNSET_ALERT_IDS = [7101, 7102];
 const SUNSET_ALERT_THRESHOLD = 70;
 // Capacitor's native WebView serves bundled assets from https://localhost
@@ -62,6 +65,7 @@ const API_BASE_URL = (() => {
   if (!isNativeShell) return '';
   return import.meta.env.VITE_API_BASE_URL || 'https://fireskychase.pages.dev';
 })();
+const TELEMETRY_ENDPOINT = `${API_BASE_URL}/api/telemetry`;
 
 function roundedCoordinate(value, step) {
   const rounded = Math.round(Number(value) / step) * step;
@@ -102,6 +106,46 @@ function cacheSet(key, value) {
   }
 }
 
+function installationId() {
+  if (typeof window === 'undefined') return 'server';
+  try {
+    const stored = window.localStorage.getItem(INSTALLATION_STORAGE_KEY);
+    if (stored) return stored;
+    const next = globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    window.localStorage.setItem(INSTALLATION_STORAGE_KEY, next);
+    return next;
+  } catch {
+    return 'anonymous';
+  }
+}
+
+function telemetry(event, detail = {}) {
+  if (typeof window === 'undefined') return;
+  const payload = JSON.stringify({
+    event,
+    at: Date.now(),
+    installation: installationId(),
+    platform: /Android/i.test(navigator.userAgent) ? 'android' : 'web',
+    detail
+  });
+  try {
+    // Keep this a CORS-simple request. Capacitor's https://localhost WebView
+    // may force credentialed cross-origin requests, which rejects wildcard
+    // CORS headers during a JSON preflight.
+    if (navigator.sendBeacon?.(TELEMETRY_ENDPOINT, new Blob([payload], { type: 'text/plain;charset=UTF-8' }))) return;
+    fetch(TELEMETRY_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: payload,
+      keepalive: true,
+      credentials: 'omit',
+      mode: 'no-cors'
+    }).catch(() => {});
+  } catch {
+    /* Diagnostics must never affect the forecast experience. */
+  }
+}
+
 function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -123,6 +167,7 @@ async function fetchJson(url, errorLabel, timeoutMs = REQUEST_TIMEOUT_MS) {
 
   const maxAttempts = 2;
   const request = (async () => {
+    const startedAt = performance.now();
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -135,7 +180,13 @@ async function fetchJson(url, errorLabel, timeoutMs = REQUEST_TIMEOUT_MS) {
           err.retryable = RETRYABLE_STATUS_CODES.has(response.status);
           throw err;
         }
-        return await response.json();
+        const result = await response.json();
+        telemetry('api_request', {
+          route: new URL(url, window.location.origin).pathname,
+          durationMs: Math.round(performance.now() - startedAt),
+          status: response.status
+        });
+        return result;
       } catch (err) {
         if (err.name === 'AbortError') {
           const timeoutErr = new Error(`${errorLabel} request timed out`);
@@ -150,6 +201,11 @@ async function fetchJson(url, errorLabel, timeoutMs = REQUEST_TIMEOUT_MS) {
           await sleep(300 * attempt);
           continue;
         }
+        telemetry('api_error', {
+          route: new URL(url, window.location.origin).pathname,
+          durationMs: Math.round(performance.now() - startedAt),
+          reason: String(err?.message ?? errorLabel).slice(0, 120)
+        });
         throw err;
       } finally {
         window.clearTimeout(timeout);
@@ -904,12 +960,13 @@ function isUsableForecastBundle(bundle) {
   return isUsableWeatherPayload(bundle?.weather);
 }
 
-function buildForecast({ weather, air = {}, ml }) {
+function buildForecast({ weather, air = {}, ml }, dayIndex = 0) {
   if (!isUsableWeatherPayload(weather)) throw new Error('Weather data is incomplete');
   const utcOffsetSeconds = weather.utc_offset_seconds ?? 0;
   const timeZone = weather.timezone || undefined;
-  const sunrise = localIsoToUtcDate(weather.daily?.sunrise?.[0], utcOffsetSeconds);
-  const sunset = localIsoToUtcDate(weather.daily?.sunset?.[0], utcOffsetSeconds);
+  const sunrise = localIsoToUtcDate(weather.daily?.sunrise?.[dayIndex], utcOffsetSeconds);
+  const sunset = localIsoToUtcDate(weather.daily?.sunset?.[dayIndex], utcOffsetSeconds);
+  if (!sunrise || !sunset) throw new Error('Weather data is incomplete for this date');
   const sunriseWindow = pickWindow(weather.hourly, sunrise, 'sunrise', utcOffsetSeconds);
   const sunsetWindow = pickWindow(weather.hourly, sunset, 'sunset', utcOffsetSeconds);
   const airSnapshot = currentAirSnapshot(air);
@@ -920,11 +977,11 @@ function buildForecast({ weather, air = {}, ml }) {
 
   const sunriseScore = mergeMlScore(
     computeWindowScore(sunriseWindow, airSnapshots.sunrise, 'sunrise'),
-    ml?.status === 'ok' ? ml?.scores?.sunrise : null
+    dayIndex === 0 && ml?.status === 'ok' ? ml?.scores?.sunrise : null
   );
   const sunsetScore = mergeMlScore(
     computeWindowScore(sunsetWindow, airSnapshots.sunset, 'sunset'),
-    ml?.status === 'ok' ? ml?.scores?.sunset : null
+    dayIndex === 0 && ml?.status === 'ok' ? ml?.scores?.sunset : null
   );
   const blueHour = computeBlueHourWindows({
     latitude: weather.latitude,
@@ -957,6 +1014,17 @@ function buildForecast({ weather, air = {}, ml }) {
     airSnapshot,
     airSnapshots
   };
+}
+
+function buildForecastDays(bundle) {
+  const count = Math.min(7, bundle?.weather?.daily?.sunrise?.length ?? 0);
+  return Array.from({ length: count }, (_, dayIndex) => {
+    try {
+      return buildForecast(bundle, dayIndex);
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
 }
 
 async function fetchForecast(place, { force = false } = {}) {
@@ -1185,16 +1253,19 @@ function saveFeedbackStore(store) {
 }
 
 function loadMobileSettings() {
-  if (typeof window === 'undefined') return { notificationsEnabled: true };
+  const defaults = { notificationsEnabled: true, alertLeadMinutes: 60, favorites: [] };
+  if (typeof window === 'undefined') return defaults;
   try {
     const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return { notificationsEnabled: true };
+    if (!raw) return defaults;
     const parsed = JSON.parse(raw);
     return {
-      notificationsEnabled: parsed?.notificationsEnabled !== false
+      notificationsEnabled: parsed?.notificationsEnabled !== false,
+      alertLeadMinutes: [30, 60, 120].includes(parsed?.alertLeadMinutes) ? parsed.alertLeadMinutes : 60,
+      favorites: Array.isArray(parsed?.favorites) ? parsed.favorites.slice(0, 8) : []
     };
   } catch {
-    return { notificationsEnabled: true };
+    return defaults;
   }
 }
 
@@ -1218,7 +1289,7 @@ function forecastDayKey(forecast) {
   return formatter.format(forecast.sunset);
 }
 
-async function scheduleSunsetAlerts({ enabled, forecast, placeName }) {
+async function scheduleSunsetAlerts({ enabled, forecast, placeName, leadMinutes = 60 }) {
   try {
     const [{ Capacitor }, { LocalNotifications }] = await Promise.all([
       import('@capacitor/core'),
@@ -1242,8 +1313,8 @@ async function scheduleSunsetAlerts({ enabled, forecast, placeName }) {
 
     const sunsetTs = forecast.sunset.getTime();
     const reminders = [
-      { id: SUNSET_ALERT_IDS[0], offsetMs: 2 * 60 * 60 * 1000, label: '2h' },
-      { id: SUNSET_ALERT_IDS[1], offsetMs: 1 * 60 * 60 * 1000, label: '1h' }
+      { id: SUNSET_ALERT_IDS[0], offsetMs: leadMinutes * 60 * 1000, label: `${leadMinutes}m` },
+      { id: SUNSET_ALERT_IDS[1], offsetMs: Math.max(15, leadMinutes / 2) * 60 * 1000, label: `${Math.max(15, leadMinutes / 2)}m` }
     ]
       .map(({ id, offsetMs, label }) => ({
         id,
@@ -1260,6 +1331,7 @@ async function scheduleSunsetAlerts({ enabled, forecast, placeName }) {
         title: 'FireSky Sunset Alert',
         body: `${placeName}: sunset chance ${probability}% (${entry.label} before sunset).`,
         schedule: { at: entry.at },
+        extra: { forecastMode: 'sunset' },
         smallIcon: 'ic_stat_icon_config_sample',
         sound: undefined
       }))
@@ -1981,6 +2053,9 @@ function MapHeatPanel({ place, samples, type }) {
   const [heatReady, setHeatReady] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(7);
   const [zoomLimits, setZoomLimits] = useState({ min: 4, max: 8.75 });
+  const [selectedSample, setSelectedSample] = useState(null);
+  const drawStartedAt = useRef(performance.now());
+  const samplesRef = useRef(samples);
   const center = useMemo(() => [place.latitude, place.longitude], [place.latitude, place.longitude]);
   const isReady = mapSettled && heatReady;
   const handleHeatReady = useCallback(() => setHeatReady(true), []);
@@ -1988,6 +2063,10 @@ function MapHeatPanel({ place, samples, type }) {
     () => `${type}:${samples?.length ?? 0}:${samples?.[0]?.latitude ?? center[0]}:${samples?.[0]?.longitude ?? center[1]}`,
     [center, samples, type]
   );
+
+  useEffect(() => {
+    samplesRef.current = samples;
+  }, [samples]);
 
   useEffect(() => {
     if (!nodeRef.current || mapRef.current) return undefined;
@@ -2013,14 +2092,27 @@ function MapHeatPanel({ place, samples, type }) {
     mapRef.current = nextMap;
     setMap(nextMap);
     const updateZoom = () => setZoomLevel(nextMap.getZoom());
+    const selectNearestSample = (event) => {
+      if (!samplesRef.current?.length) return;
+      const nearest = samplesRef.current.reduce((best, sample) => {
+        const distance = (sample.latitude - event.lngLat.lat) ** 2 + (sample.longitude - event.lngLat.lng) ** 2;
+        return !best || distance < best.distance ? { sample, distance } : best;
+      }, null);
+      if (nearest?.sample) {
+        setSelectedSample(nearest.sample);
+        telemetry('map_sample_selected', { type, value: Math.round(mapLabelValue(nearest.sample, type)) });
+      }
+    };
     nextMap.on('zoom', updateZoom);
     nextMap.on('zoomend', updateZoom);
+    nextMap.on('click', selectNearestSample);
 
     return () => {
       disposed = true;
       nextMap.off('load', onLoad);
       nextMap.off('zoom', updateZoom);
       nextMap.off('zoomend', updateZoom);
+      nextMap.off('click', selectNearestSample);
       setMap(null);
       try {
         if (!nextMap._removed) nextMap.remove();
@@ -2030,6 +2122,16 @@ function MapHeatPanel({ place, samples, type }) {
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    setSelectedSample(null);
+    drawStartedAt.current = performance.now();
+  }, [sampleSignature]);
+
+  useEffect(() => {
+    if (!isReady) return;
+    telemetry('heatmap_render', { type, durationMs: Math.round(performance.now() - drawStartedAt.current), samples: samples?.length ?? 0 });
+  }, [isReady, samples?.length, type]);
 
   useEffect(() => {
     if (!map) return;
@@ -2114,6 +2216,13 @@ function MapHeatPanel({ place, samples, type }) {
         <i />
         <span>100%</span>
       </div>
+      {selectedSample ? (
+        <div className="map-selection" role="status">
+          <span>Selected area</span>
+          <strong>{Math.round(mapLabelValue(selectedSample, type))}%</strong>
+          <small>{selectedSample.latitude.toFixed(2)}, {selectedSample.longitude.toFixed(2)}</small>
+        </div>
+      ) : null}
       <div className="map-loading-surface" aria-hidden="true">
         <div className="map-loading-grid" />
         <div className="map-loading-contours">
@@ -2175,7 +2284,37 @@ function FactorBars({ score }) {
   );
 }
 
-function SearchPanel({ onSelect }) {
+function ForecastStrip({ days, activeMode, timeZone, selectedDayIndex, onSelect }) {
+  if (!days?.length) return null;
+  return (
+    <GlassCard className="forecast-strip" delay={0.16}>
+      <div className="forecast-strip-head">
+        <span>7-day outlook</span>
+        <small>Tap a day to compare the model signal</small>
+      </div>
+      <div className="forecast-days">
+        {days.map((day, index) => {
+          const date = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', month: 'numeric', day: 'numeric' }).format(day.sunset);
+          const score = day.scores?.[activeMode];
+          return (
+            <button
+              type="button"
+              key={`${date}-${index}`}
+              className={index === selectedDayIndex ? 'selected' : ''}
+              onClick={() => onSelect(index)}
+            >
+              <span>{index === 0 ? 'Today' : date}</span>
+              <strong>{Math.round(score?.probability ?? 0)}%</strong>
+              <small>{index === 0 && score?.ml ? 'ML v2' : 'Weather'}</small>
+            </button>
+          );
+        })}
+      </div>
+    </GlassCard>
+  );
+}
+
+function SearchPanel({ onSelect, favorites }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -2208,6 +2347,16 @@ function SearchPanel({ onSelect }) {
           <button key={place.name} onClick={() => onSelect(place)}>{place.name}</button>
         ))}
       </div>
+      {favorites?.length ? (
+        <div className="favorite-row" aria-label="Saved locations">
+          <span>Saved</span>
+          {favorites.map((favorite) => (
+            <button key={`${favorite.latitude}-${favorite.longitude}`} type="button" onClick={() => onSelect(favorite)}>
+              <Star size={13} fill="currentColor" /> {favorite.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {searchError ? <div className="search-error">{searchError}</div> : null}
       <AnimatePresence>
         {results.length ? (
@@ -2235,8 +2384,11 @@ function App() {
   const [error, setError] = useState('');
   const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(savedSettings.notificationsEnabled);
+  const [alertLeadMinutes, setAlertLeadMinutes] = useState(savedSettings.alertLeadMinutes);
+  const [favorites, setFavorites] = useState(savedSettings.favorites);
   const [feedbackStore, setFeedbackStore] = useState(() => loadFeedbackStore());
   const [showSearch, setShowSearch] = useState(false);
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const loadSeq = useRef(0);
   const userSelectedModeRef = useRef(false);
 
@@ -2311,12 +2463,44 @@ function App() {
   }, []);
 
   useEffect(() => {
-    saveMobileSettings({ notificationsEnabled });
-  }, [notificationsEnabled]);
+    const onError = (event) => telemetry('web_error', {
+      reason: String(event.message ?? event.error?.message ?? 'Unknown error').slice(0, 160)
+    });
+    const onUnhandledRejection = (event) => telemetry('web_unhandled_rejection', {
+      reason: String(event.reason?.message ?? event.reason ?? 'Unhandled rejection').slice(0, 160)
+    });
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onUnhandledRejection);
+
+    let observer;
+    try {
+      observer = new PerformanceObserver((list) => {
+        list.getEntries().forEach((entry) => {
+          if (entry.duration >= 200) telemetry('ui_long_task', { durationMs: Math.round(entry.duration) });
+        });
+      });
+      observer.observe({ type: 'longtask', buffered: true });
+    } catch {
+      /* Long Task reporting is not implemented by every WebView. */
+    }
+
+    telemetry('app_open', { version: '1.1.0' });
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onUnhandledRejection);
+      observer?.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    saveMobileSettings({ notificationsEnabled, alertLeadMinutes, favorites });
+  }, [notificationsEnabled, alertLeadMinutes, favorites]);
 
   function selectPlace(nextPlace) {
     setPlace(nextPlace);
+    setSelectedDayIndex(0);
     setShowSearch(false);
+    telemetry('location_selected', { source: nextPlace.name === 'Current Location' ? 'location' : 'search' });
     load(nextPlace, activeMode);
   }
 
@@ -2373,21 +2557,23 @@ function App() {
     );
   }
 
-  const active = data?.scores?.[activeMode];
-  const activeWindow = data?.windows?.[activeMode];
-  const activeAppearanceWindow = data?.appearanceWindow?.[activeMode];
-  const activeAirSnapshot = data?.airSnapshots?.[activeMode] ?? data?.airSnapshot;
-  const theme = data ? weatherTheme(data.current?.weather_code, data.current?.cloud_cover) : 'clear';
-  const currentWeather = data ? weatherDescription(data.current?.weather_code, data.current?.cloud_cover) : 'Loading';
+  const forecastDays = useMemo(() => (data ? buildForecastDays({ weather: data.weather, air: data.air, ml: data.ml }) : []), [data]);
+  const selectedOutlook = forecastDays[selectedDayIndex] ?? data;
+  const active = selectedOutlook?.scores?.[activeMode];
+  const activeWindow = selectedOutlook?.windows?.[activeMode];
+  const activeAppearanceWindow = selectedOutlook?.appearanceWindow?.[activeMode];
+  const activeAirSnapshot = selectedOutlook?.airSnapshots?.[activeMode] ?? selectedOutlook?.airSnapshot;
+  const theme = selectedOutlook ? weatherTheme(selectedOutlook.current?.weather_code, selectedOutlook.current?.cloud_cover) : 'clear';
+  const currentWeather = selectedOutlook ? weatherDescription(selectedOutlook.current?.weather_code, selectedOutlook.current?.cloud_cover) : 'Loading';
   const isNight = useMemo(() => {
-    if (!data?.sunrise || !data?.sunset) return false;
+    if (!selectedOutlook?.sunrise || !selectedOutlook?.sunset) return false;
     const now = Date.now();
-    return now < data.sunrise.getTime() || now > data.sunset.getTime();
-  }, [data]);
+    return now < selectedOutlook.sunrise.getTime() || now > selectedOutlook.sunset.getTime();
+  }, [selectedOutlook]);
   const dominant = useMemo(() => {
-    if (!data) return null;
-    return data.scores.sunset.probability >= data.scores.sunrise.probability ? 'sunset' : 'sunrise';
-  }, [data]);
+    if (!selectedOutlook) return null;
+    return selectedOutlook.scores.sunset.probability >= selectedOutlook.scores.sunrise.probability ? 'sunset' : 'sunrise';
+  }, [selectedOutlook]);
   const sunsetDay = useMemo(() => forecastDayKey(data), [data]);
   const sunsetFeedback = sunsetDay ? feedbackStore[sunsetDay] : null;
   const recentSunsetFeedback = useMemo(
@@ -2397,6 +2583,9 @@ function App() {
       .slice(0, 7),
     [feedbackStore]
   );
+  const isFavorite = favorites.some((item) => (
+    Math.abs(item.latitude - place.latitude) < 0.001 && Math.abs(item.longitude - place.longitude) < 0.001
+  ));
 
   useEffect(() => {
     if (!data?.scores?.sunset || !sunsetDay) return;
@@ -2421,9 +2610,38 @@ function App() {
     scheduleSunsetAlerts({
       enabled: notificationsEnabled,
       forecast: data,
-      placeName: title
+      placeName: title,
+      leadMinutes: alertLeadMinutes
     });
-  }, [notificationsEnabled, data?.sunset?.getTime?.(), data?.scores?.sunset?.probability, title]);
+  }, [notificationsEnabled, alertLeadMinutes, data?.sunset?.getTime?.(), data?.scores?.sunset?.probability, title]);
+
+  useEffect(() => {
+    let listener;
+    let disposed = false;
+    (async () => {
+      try {
+        const [{ Capacitor }, { LocalNotifications }] = await Promise.all([
+          import('@capacitor/core'),
+          import('@capacitor/local-notifications')
+        ]);
+        if (!Capacitor.isNativePlatform() || disposed) return;
+        listener = await LocalNotifications.addListener('localNotificationActionPerformed', (event) => {
+          if (event.notification?.extra?.forecastMode === 'sunset') {
+            setActiveMode('sunset');
+            userSelectedModeRef.current = true;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            telemetry('notification_opened', { mode: 'sunset' });
+          }
+        });
+      } catch {
+        /* Notification deep links are optional enhancement. */
+      }
+    })();
+    return () => {
+      disposed = true;
+      listener?.remove?.();
+    };
+  }, []);
 
   function updateSunsetFeedback(patch) {
     if (!sunsetDay || !data?.scores?.sunset) return;
@@ -2446,16 +2664,45 @@ function App() {
 
   function toggleSunsetReaction(sentiment) {
     const currentSentiment = sunsetFeedback?.sentiment ?? null;
-    updateSunsetFeedback({ sentiment: currentSentiment === sentiment ? null : sentiment });
+    const next = currentSentiment === sentiment ? null : sentiment;
+    updateSunsetFeedback({ sentiment: next });
+    telemetry('forecast_feedback', { kind: 'sentiment', value: next ?? 'cleared' });
   }
 
   function toggleSunsetAccuracy(accurate) {
     const currentAccuracy = sunsetFeedback?.accurate;
-    updateSunsetFeedback({ accurate: currentAccuracy === accurate ? null : accurate });
+    const next = currentAccuracy === accurate ? null : accurate;
+    updateSunsetFeedback({ accurate: next });
+    telemetry('forecast_feedback', { kind: 'accuracy', value: next == null ? 'cleared' : String(next) });
   }
 
   function toggleNotifications() {
     setNotificationsEnabled((value) => !value);
+  }
+
+  function toggleFavorite() {
+    setFavorites((current) => {
+      const exists = current.some((item) => Math.abs(item.latitude - place.latitude) < 0.001 && Math.abs(item.longitude - place.longitude) < 0.001);
+      const next = exists
+        ? current.filter((item) => !(Math.abs(item.latitude - place.latitude) < 0.001 && Math.abs(item.longitude - place.longitude) < 0.001))
+        : [{ ...place }, ...current].slice(0, 8);
+      telemetry('favorite_location', { action: exists ? 'remove' : 'add', total: next.length });
+      return next;
+    });
+  }
+
+  async function shareForecast() {
+    if (!selectedOutlook?.scores?.[activeMode]) return;
+    const score = Math.round(selectedOutlook.scores[activeMode].probability ?? 0);
+    const window = selectedOutlook.appearanceWindow?.[activeMode];
+    const text = `${title}: ${activeMode === 'sunset' ? 'Sunset' : 'Sunrise'} chance is ${score}%${window ? ` · Best window ${formatRange(window.start, window.end, selectedOutlook.timeZone)}` : ''}.`;
+    try {
+      if (navigator.share) await navigator.share({ title: 'FireSky forecast', text });
+      else await navigator.clipboard?.writeText(text);
+      telemetry('forecast_shared', { mode: activeMode, score });
+    } catch {
+      /* User cancellation is expected and should remain silent. */
+    }
   }
 
   return (
@@ -2484,11 +2731,15 @@ function App() {
               <button className={activeMode === 'sunset' ? 'selected' : ''} onClick={() => selectMode('sunset')}>Sunset</button>
             </div>
             <div className="quick-actions">
+              <button onClick={toggleFavorite} title={isFavorite ? 'Remove saved location' : 'Save location'} className={isFavorite ? 'selected' : ''}>
+                <Star size={18} fill={isFavorite ? 'currentColor' : 'none'} />
+              </button>
               <button onClick={locateMe} title="Locate"><LocateFixed size={18} /></button>
               <button onClick={() => load(place, activeMode, { force: true })} title="Refresh"><RefreshCw size={18} /></button>
               <button onClick={toggleNotifications} title={notificationsEnabled ? 'Disable sunset alerts' : 'Enable sunset alerts'} className={notificationsEnabled ? 'selected' : ''}>
                 {notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}
               </button>
+              <button onClick={shareForecast} title="Share forecast"><Share2 size={18} /></button>
             </div>
           </div>
         </div>
@@ -2496,7 +2747,7 @@ function App() {
         <AnimatePresence>
           {showSearch ? (
             <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-              <SearchPanel onSelect={selectPlace} />
+              <SearchPanel onSelect={selectPlace} favorites={favorites} />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -2544,7 +2795,7 @@ function App() {
                 <div className="hero-copy">
                   <div className="eyebrow">
                     <Sparkles size={14} />
-                    <span>Today's Fire Sky Forecast</span>
+                    <span>{selectedDayIndex === 0 ? "Today's Fire Sky Forecast" : new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: selectedOutlook.timeZone }).format(selectedOutlook.sunset)}</span>
                   </div>
                   <div className="current-weather-line">
                     <strong>{Math.round(data.current?.temperature_2m ?? 0)}°</strong>
@@ -2556,6 +2807,17 @@ function App() {
                 <ScoreRing value={active.probability} label={describeScore(active.probability)} tone={activeMode} />
               </GlassCard>
 
+              <ForecastStrip
+                days={forecastDays}
+                activeMode={activeMode}
+                timeZone={data.timeZone}
+                selectedDayIndex={selectedDayIndex}
+                onSelect={(index) => {
+                  setSelectedDayIndex(index);
+                  telemetry('outlook_day_selected', { dayOffset: index, mode: activeMode });
+                }}
+              />
+
               <GlassCard className="astro-card" delay={0.14}>
                 <div className="astro-column violet">
                   <i />
@@ -2563,20 +2825,20 @@ function App() {
                     <span className="astro-kicker">Solar Events</span>
                     <div className="astro-row">
                       <small>Sunrise</small>
-                      <strong>{formatTime(data.sunrise, data.timeZone)}</strong>
+                      <strong>{formatTime(selectedOutlook.sunrise, selectedOutlook.timeZone)}</strong>
                     </div>
                     <div className="astro-row">
                       <small>Sunset</small>
-                      <strong>{formatTime(data.sunset, data.timeZone)}</strong>
+                      <strong>{formatTime(selectedOutlook.sunset, selectedOutlook.timeZone)}</strong>
                     </div>
                     <div className="astro-note">
                       <span>Day Length</span>
-                      <b>{formatDuration(data.sunrise, data.sunset)}</b>
+                      <b>{formatDuration(selectedOutlook.sunrise, selectedOutlook.sunset)}</b>
                     </div>
                     <div className="astro-mini-grid">
                       <div>
                         <span>Peak Color</span>
-                        <b>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, data.timeZone)}</b>
+                        <b>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, selectedOutlook.timeZone)}</b>
                       </div>
                       <div>
                         <span>Best Duration</span>
@@ -2591,24 +2853,24 @@ function App() {
                     <span className="astro-kicker">Blue Hour</span>
                     <div className="astro-row">
                       <small>Morning</small>
-                      <strong>{formatRange(data.blueHour.sunrise.start, data.blueHour.sunrise.end, data.timeZone)}</strong>
+                      <strong>{formatRange(selectedOutlook.blueHour.sunrise.start, selectedOutlook.blueHour.sunrise.end, selectedOutlook.timeZone)}</strong>
                     </div>
                     <div className="astro-row">
                       <small>Evening</small>
-                      <strong>{formatRange(data.blueHour.sunset.start, data.blueHour.sunset.end, data.timeZone)}</strong>
+                      <strong>{formatRange(selectedOutlook.blueHour.sunset.start, selectedOutlook.blueHour.sunset.end, selectedOutlook.timeZone)}</strong>
                     </div>
                     <div className="astro-note">
                       <span>Total</span>
-                      <b>{formatTotalDuration([data.blueHour.sunrise, data.blueHour.sunset])}</b>
+                      <b>{formatTotalDuration([selectedOutlook.blueHour.sunrise, selectedOutlook.blueHour.sunset])}</b>
                     </div>
                     <div className="astro-mini-grid">
                       <div>
                         <span>Morning Length</span>
-                        <b>{formatDuration(data.blueHour.sunrise.start, data.blueHour.sunrise.end)}</b>
+                        <b>{formatDuration(selectedOutlook.blueHour.sunrise.start, selectedOutlook.blueHour.sunrise.end)}</b>
                       </div>
                       <div>
                         <span>Evening Length</span>
-                        <b>{formatDuration(data.blueHour.sunset.start, data.blueHour.sunset.end)}</b>
+                        <b>{formatDuration(selectedOutlook.blueHour.sunset.start, selectedOutlook.blueHour.sunset.end)}</b>
                       </div>
                     </div>
                   </div>
@@ -2616,7 +2878,7 @@ function App() {
               </GlassCard>
 
               <div className="controls-panel">
-                <MetricRail activeMode={activeMode} data={data} />
+                <MetricRail activeMode={activeMode} data={selectedOutlook} />
               </div>
 
               <GlassCard className="local-data" delay={0.2}>
@@ -2629,7 +2891,7 @@ function App() {
                   </strong>
                 </div>
                 <div className="data-pills">
-                  <div><strong>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, data.timeZone)}</strong><span>Peak Window</span></div>
+                  <div><strong>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, selectedOutlook.timeZone)}</strong><span>Peak Window</span></div>
                   <div><strong>{formatDuration(activeAppearanceWindow?.start, activeAppearanceWindow?.end)}</strong><span>Best Duration</span></div>
                   <div><strong>{activeAirSnapshot?.us_aqi != null ? Math.round(activeAirSnapshot.us_aqi) : '--'}</strong><span>Window AQI</span></div>
                   <div><strong>{((activeWindow.visibility ?? 0) / 1000).toFixed(1)}km</strong><span>Window Visibility</span></div>
@@ -2685,6 +2947,14 @@ function App() {
                       </div>
                     )) : <p>No daily sunset feedback yet.</p>}
                   </div>
+                  <label className="alert-setting">
+                    <span>Sunset alert lead time</span>
+                    <select value={alertLeadMinutes} onChange={(event) => setAlertLeadMinutes(Number(event.target.value))}>
+                      <option value={30}>30 minutes</option>
+                      <option value={60}>1 hour</option>
+                      <option value={120}>2 hours</option>
+                    </select>
+                  </label>
                 </div>
                 <div className="verdict">
                   <AlertTriangle size={18} />

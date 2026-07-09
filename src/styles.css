@@ -399,6 +399,36 @@ main.is-night .app-shell {
   padding-top: 10px;
 }
 
+.favorite-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 10px;
+}
+
+.favorite-row > span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.favorite-row button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-control);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
 .preset-row button {
   white-space: nowrap;
 }
@@ -474,10 +504,77 @@ main.is-night .app-shell {
   grid-template-areas:
     "maps maps"
     "hero astro"
+    "forecast forecast"
     "controls controls"
     "local local";
   gap: 18px;
   align-items: stretch;
+}
+
+.forecast-strip {
+  grid-area: forecast;
+  padding: 14px;
+}
+
+.forecast-strip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.forecast-strip-head span {
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.forecast-strip-head small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.forecast-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.forecast-days button {
+  display: grid;
+  min-height: 78px;
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  padding: 8px 5px;
+  border: 1px solid var(--glass-border);
+  border-radius: 11px;
+  background: var(--glass-control);
+  color: var(--text-secondary);
+}
+
+.forecast-days button.selected {
+  background: var(--glass-selected);
+  border-color: var(--glass-border-strong);
+  color: #fff;
+}
+
+.forecast-days button > span,
+.forecast-days button small {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.forecast-days button strong {
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1;
 }
 
 .spin {
@@ -1165,6 +1262,34 @@ h2 span:last-child {
   box-shadow: inset 0 0 0 1px var(--glass-border);
 }
 
+.map-selection {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: grid;
+  gap: 1px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 9px;
+  background: rgba(16, 31, 54, 0.78);
+  box-shadow: 0 8px 20px rgba(8, 20, 42, 0.24);
+  color: #fff;
+  backdrop-filter: blur(10px);
+}
+
+.map-selection span,
+.map-selection small {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 9px;
+}
+
+.map-selection strong {
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1;
+}
+
 .map-legend.probability i,
 .map-legend.quality i {
   background: linear-gradient(90deg, #246097, #3a9cb8, #6cb881, #f4cf49, #ed703e, #c23646);
@@ -1417,6 +1542,30 @@ h2 span:last-child {
   font-size: 12px;
 }
 
+.alert-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.alert-setting select {
+  min-height: 34px;
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: inherit;
+}
+
+.alert-setting option { color: #15233b; }
+
 .factor div {
   display: flex;
   justify-content: space-between;
@@ -1505,6 +1654,7 @@ h2 span:last-child {
     grid-template-areas:
       "maps"
       "hero"
+      "forecast"
       "astro"
       "controls"
       "local";
@@ -1542,9 +1692,13 @@ h2 span:last-child {
   }
 
   .topbar {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    padding: 0 2px;
   }
+
+  .brand-mark strong { font-size: 19px; }
+  .header-meta { display: none; }
 
   .location-row {
     align-items: center;
@@ -1573,8 +1727,8 @@ h2 span:last-child {
   }
 
   .quick-actions button {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     border-radius: 11px;
   }
 
@@ -1584,20 +1738,22 @@ h2 span:last-child {
   }
 
   .mode-toggle button {
-    min-height: 40px;
+    min-height: 36px;
+    padding: 0 8px;
+    font-size: 13px;
   }
 
   .hero {
-    grid-template-columns: minmax(0, 1fr) 190px;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) 142px;
+    gap: 6px;
     align-items: center;
     min-height: 0;
-    padding: 16px;
+    padding: 12px;
   }
 
   .score-ring {
-    width: 190px;
-    max-width: 190px;
+    width: 142px;
+    max-width: 142px;
     justify-self: end;
     margin-top: 0;
   }
@@ -1613,29 +1769,193 @@ h2 span:last-child {
   }
 
   .score-orb-core strong {
-    font-size: 36px;
+    font-size: 30px;
   }
 
   .score-orb-core span {
-    font-size: 14px;
+    font-size: 11px;
   }
 
   .score-orb-core small {
-    font-size: 10.5px;
+    font-size: 9px;
   }
 
   h1 {
-    font-size: 19px;
+    margin: 6px 0 3px;
+    font-size: 17px;
   }
 
   p {
+    display: none;
+  }
+
+  .eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.9px;
+  }
+
+  .current-weather-line {
+    margin-top: 6px;
+  }
+
+  .current-weather-line strong {
+    font-size: 22px;
+  }
+
+  .current-weather-line span {
     font-size: 12px;
-    line-height: 1.42;
   }
 
   .map-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
     min-height: 0;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .map-grid .glass {
+    min-height: 0;
+    padding: 8px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .map-grid h2 {
+    margin-bottom: 6px;
+    font-size: 9px;
+    letter-spacing: 0.8px;
+  }
+
+  h2 span:last-child {
+    display: none;
+  }
+
+  .real-map {
+    min-height: 142px;
+    height: 142px;
+    border-radius: 10px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .maplibre-node,
+  .maplibregl-map,
+  .maplibregl-canvas-container,
+  .maplibregl-canvas {
+    min-width: 0 !important;
+  }
+
+  .map-zoom-controls,
+  .map-legend {
+    display: none;
+  }
+
+  .map-score-labels strong {
+    font-size: 8px;
+  }
+
+  .map-selection {
+    top: 6px;
+    left: 6px;
+    padding: 4px 5px;
+  }
+
+  .map-selection span,
+  .map-selection small { font-size: 7px; }
+  .map-selection strong { font-size: 12px; }
+
+  .forecast-strip {
+    padding: 11px;
+  }
+
+  .forecast-strip-head { margin-bottom: 8px; }
+  .forecast-strip-head span { font-size: 13px; }
+  .forecast-strip-head small { display: none; }
+
+  .forecast-days {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .forecast-days button {
+    min-width: 63px;
+    min-height: 64px;
+    padding: 6px 4px;
+  }
+
+  .forecast-days button strong { font-size: 17px; }
+
+  .forecast-days button > span,
+  .forecast-days button small { font-size: 9px; }
+
+  .map-grid {
+    margin-top: 0;
+  }
+
+  /* Keep the two maps and the ML probability card above the fold on phones. */
+  .dashboard-grid { gap: 10px; }
+  .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+
+  .location-row { margin: 12px 0 10px; }
+
+  .location-button { font-size: 17px; }
+
+  .glass { border-radius: 14px; }
+
+  .alert-setting {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .alert-setting select { width: 100%; }
+
+  /* The detail panels below the first screen retain the more spacious layout. */
+  .hero + .forecast-strip {
+    margin-top: 0;
+  }
+
+  .map-grid {
+    grid-area: maps;
+  }
+
+  .forecast-strip {
+    grid-area: forecast;
+  }
+
+  .hero {
+    grid-area: hero;
+  }
+
+  .astro-card {
+    grid-area: astro;
+  }
+
+  .controls-panel {
+    grid-area: controls;
+  }
+
+  .local-data {
+    grid-area: local;
+  }
+
+  /* old mobile map stack declarations overridden by the compact two-up layout */
+  .map-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .map-grid .glass {
+    min-height: 0;
+  }
+
+  .real-map {
+    height: 142px;
+  }
+
+  .hero p {
+    line-height: 1.42;
   }
 
   .metric-rail {
@@ -1686,13 +2006,6 @@ h2 span:last-child {
     overflow: visible;
   }
 
-  .map-grid .glass {
-    min-height: 420px;
-  }
-
-  .real-map {
-    height: 360px;
-  }
 
   .section-title {
     --section-score-size: clamp(17px, 4.2vw, 18px);
@@ -1756,7 +2069,7 @@ h2 span:last-child {
 
 @media (max-width: 380px) {
   .map-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .map-grid .glass,
@@ -1770,13 +2083,13 @@ h2 span:last-child {
   }
 
   .hero {
-    grid-template-columns: minmax(0, 1fr) 152px;
+    grid-template-columns: minmax(0, 1fr) 122px;
     padding: 14px;
   }
 
   .score-ring {
-    width: 152px;
-    max-width: 152px;
+    width: 122px;
+    max-width: 122px;
   }
 
   .score-orb-core strong {

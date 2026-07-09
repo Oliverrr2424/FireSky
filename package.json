@@ -22,14 +22,15 @@
     "mobile:wrangler:dev": "wrangler pages dev dist --port 8788 --ip 0.0.0.0",
     "mobile:build:local": "cross-env VITE_API_BASE_URL=http://10.0.2.2:8788 vite build && npx cap sync android",
     "mobile:android:install": "cd android && ./gradlew installDebug",
-    "mobile:android:launch": "adb shell am start -n com.firesky.app/.MainActivity"
+    "mobile:android:launch": "adb shell am start -n com.firesky.app/.MainActivity",
+    "mobile:test:smoke": "bash scripts/android-smoke-test.sh"
   },
   "dependencies": {
-    "@capacitor/android": "^8.3.4",
-    "@capacitor/cli": "^8.3.4",
-    "@capacitor/core": "^8.3.4",
+    "@capacitor/android": "8.3.4",
+    "@capacitor/cli": "8.3.4",
+    "@capacitor/core": "8.3.4",
     "@capacitor/geolocation": "^8.2.0",
-    "@capacitor/ios": "^8.3.4",
+    "@capacitor/ios": "8.3.4",
     "@capacitor/local-notifications": "^8.1.0",
     "@capacitor/network": "^8.0.1",
     "@vitejs/plugin-react": "latest",
