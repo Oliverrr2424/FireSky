@@ -61,9 +61,17 @@ const SUNSET_ALERT_THRESHOLD = 70;
 const API_BASE_URL = (() => {
   if (typeof window === 'undefined') return '';
   const { protocol, hostname } = window.location;
+  const configuredBaseUrl = String(import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/$/, '');
+  // An explicit endpoint is useful for both Capacitor and browser development
+  // (for example, VITE_API_BASE_URL=http://10.0.2.2:8788).
+  if (configuredBaseUrl) return configuredBaseUrl;
   const isNativeShell = hostname === 'localhost' && (protocol === 'https:' || protocol === 'capacitor:');
-  if (!isNativeShell) return '';
-  return import.meta.env.VITE_API_BASE_URL || 'https://fireskychase.pages.dev';
+  if (isNativeShell) return 'https://fireskychase.pages.dev';
+  // Do not send local-preview API calls through Vite's Node proxy. Its upstream
+  // connection can intermittently time out while direct CORS-enabled requests
+  // to the Pages API remain available.
+  const isLocalPreview = hostname === '127.0.0.1' || hostname === 'localhost';
+  return isLocalPreview ? 'https://fireskychase.pages.dev' : '';
 })();
 const TELEMETRY_ENDPOINT = `${API_BASE_URL}/api/telemetry`;
 
@@ -2084,7 +2092,9 @@ function MapHeatPanel({ place, samples, type }) {
       pitchWithRotate: false,
       maxZoom: 8.75
     });
-    nextMap.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+    // Keep required OpenFreeMap/OpenStreetMap attribution visible without the
+    // expandable information bubble obscuring a compact mobile heatmap.
+    nextMap.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
     const onLoad = () => {
       if (!disposed) enhanceMapReferenceStyle(nextMap);
     };
