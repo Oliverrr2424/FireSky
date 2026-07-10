@@ -1843,8 +1843,8 @@ h2 span:last-child {
   }
 
   .real-map {
-    min-height: 210px;
-    height: 210px;
+    min-height: 255px;
+    height: 255px;
     border-radius: 10px;
     min-width: 0;
     width: 100%;
@@ -1962,7 +1962,7 @@ h2 span:last-child {
   }
 
   .real-map {
-    height: 210px;
+    height: 255px;
   }
 
   .hero p {
