@@ -1913,6 +1913,54 @@ h2 span:last-child {
 
   .location-button { font-size: 17px; }
 
+  .search-panel {
+    padding: 8px;
+    margin-bottom: 10px;
+    border-radius: 14px;
+  }
+
+  .search-panel form {
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 10px;
+  }
+
+  .search-panel form svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .search-panel input {
+    font-size: 13px;
+  }
+
+  .search-panel form button,
+  .preset-row button,
+  .results button {
+    padding: 6px 10px;
+    border-radius: 9px;
+    font-size: 12px;
+  }
+
+  .preset-row {
+    gap: 6px;
+    padding-top: 7px;
+  }
+
+  .preset-row button {
+    min-height: 30px;
+  }
+
+  .favorite-row {
+    gap: 6px;
+    padding-top: 7px;
+  }
+
+  .search-error,
+  .results {
+    margin-top: 7px;
+  }
+
   .glass { border-radius: 14px; }
 
   .alert-setting {
