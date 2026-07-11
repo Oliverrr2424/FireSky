@@ -2549,3 +2549,106 @@ main {
   .metric-rail { border-radius: 22px; }
   .search-panel { border-radius: 22px; }
 }
+
+/* Final surface system: the page uses one outer panel, one inset surface and
+   one control surface. Weather gradients and the map remain the only content
+   areas allowed to introduce their own colour. */
+:root {
+  --surface-panel: rgba(31, 70, 109, 0.30);
+  --surface-inset: rgba(255, 255, 255, 0.105);
+  --surface-control: rgba(18, 54, 89, 0.24);
+  --surface-hairline: rgba(255, 255, 255, 0.18);
+  --surface-shadow: rgba(11, 38, 69, 0.14);
+}
+
+.glass,
+.hero,
+.astro-card,
+.local-data,
+.forecast-strip,
+.map-grid .glass,
+.metric-rail,
+.search-panel,
+.account-panel {
+  background: var(--surface-panel) !important;
+  border: 0 !important;
+  box-shadow: inset 0 1px 0 var(--surface-hairline), 0 14px 34px var(--surface-shadow) !important;
+}
+
+.glass,
+.hero,
+.astro-card,
+.local-data,
+.forecast-strip,
+.map-grid .glass,
+.metric-rail,
+.search-panel,
+.account-panel,
+.feedback-actions,
+.field-tools {
+  backdrop-filter: blur(28px) saturate(135%);
+  -webkit-backdrop-filter: blur(28px) saturate(135%);
+}
+
+.astro-mini-grid div,
+.score-pair span,
+.data-pills div,
+.forecast-days button.selected,
+.feedback-actions,
+.feedback-history div,
+.field-tools {
+  background: var(--surface-inset) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11) !important;
+}
+
+.header-meta,
+.account-button,
+.quick-actions button,
+.mode-toggle,
+.mode-toggle button,
+.saved-places-bar button.selected,
+.search-panel form,
+.search-panel form button,
+.preset-row button,
+.favorite-row button,
+.viewpoint-save,
+.feedback-submitted button,
+.alert-setting select {
+  background: var(--surface-control) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+.metric-rail { overflow: hidden; }
+.rail-item { background: transparent !important; }
+.rail-item:hover { background: var(--surface-inset) !important; }
+.rail-item + .rail-item { border-left-color: var(--surface-hairline); }
+
+.forecast-timeline,
+.feedback-panel {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.field-tools { border: 0 !important; }
+.field-tool { background: transparent !important; box-shadow: none !important; }
+.field-tool + .field-tool { border-color: var(--surface-hairline); }
+
+.factor i { background: var(--surface-control) !important; }
+.feedback-actions button { background: transparent !important; }
+.feedback-actions button.selected { background: var(--surface-inset) !important; }
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .hero,
+  .astro-card,
+  .local-data,
+  .forecast-strip,
+  .map-grid .glass,
+  .metric-rail,
+  .search-panel,
+  .account-panel {
+    background: rgb(44, 83, 122) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
