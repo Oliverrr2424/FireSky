@@ -140,42 +140,13 @@ main.weather-fog .app-shell {
   position: relative;
   z-index: 1;
   padding: 28px;
-  border: 1px solid var(--glass-border);
+  border: 0;
   border-radius: 20px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.01) 38%, rgba(8, 20, 42, 0.08)),
-    var(--glass-shell);
-  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 80px var(--glass-shadow);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  overflow: hidden;
-}
-
-.app-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-  background-size: 80px 80px;
-  mask-image: linear-gradient(to bottom, #000, transparent 70%);
-  opacity: 0.1;
-  pointer-events: none;
-}
-
-main.weather-rain .app-shell,
-main.weather-storm .app-shell,
-main.weather-fog .app-shell {
-  background:
-    linear-gradient(180deg, rgba(210, 225, 240, 0.07), rgba(30, 48, 70, 0.05) 44%, rgba(10, 22, 38, 0.12)),
-    rgba(30, 48, 70, 0.1);
-}
-
-main.is-night .app-shell {
-  background:
-    linear-gradient(180deg, rgba(110, 130, 190, 0.08), rgba(12, 18, 42, 0.08) 46%, rgba(4, 8, 22, 0.16)),
-    rgba(13, 22, 50, 0.12);
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: visible;
 }
 
 .topbar,
@@ -222,25 +193,6 @@ main.is-night .app-shell {
   font-family: var(--font-display);
   font-size: 22px;
   letter-spacing: 0;
-}
-
-.header-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: var(--glass-control);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: var(--glass-control-blur);
-  -webkit-backdrop-filter: var(--glass-control-blur);
-  font-size: 13px;
-}
-
-.header-meta b {
-  font-family: var(--font-display);
-  color: #fff;
-  font-weight: 800;
 }
 
 .account-button {
@@ -290,16 +242,16 @@ main.is-night .app-shell {
 .sync-status { display: flex; align-items: center; gap: 6px; color: #c8f5d8; font-size: 12px; }.sync-status small { margin-left: auto; color: var(--text-muted); }
 .password-change strong { font-size: 13px; }.account-hint, .account-notice { display: block; margin: 12px 0; color: var(--text-muted); font-size: 12px; }.account-notice { color: #c8f5d8; }
 
-.forecast-timeline { margin: 18px 0; padding: 14px; border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(15, 44, 78, .16); }
+.forecast-timeline { margin: 18px 0; padding: 14px; border: 0; border-radius: 12px; background: transparent; }
 .timeline-head span { font-weight: 700; }.timeline-head small { margin-left: auto; color: var(--text-muted); }
 .timeline-bars { height: 112px; display: flex; align-items: end; gap: 7px; padding: 20px 2px 0; overflow-x: auto; }
 .timeline-point { min-width: 44px; height: 100%; display: grid; grid-template-rows: 1fr auto auto; align-items: end; text-align: center; gap: 3px; font-size: 11px; color: var(--text-secondary); }
 .timeline-point i { width: 100%; min-height: 6px; border-radius: 5px 5px 2px 2px; background: linear-gradient(#ffd76a, #ed7048); }.timeline-point b { font-size: 12px; color: #fff; }.timeline-point small { color: var(--text-muted); }
 .forecast-timeline p { margin: 9px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.4; }
 
-.field-tools { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; margin: 16px 0; }.field-tool { align-items: flex-start; padding: 11px; border: 1px solid var(--glass-border); border-radius: 11px; background: rgba(14, 38, 70, .15); }.field-tool svg { color: #ffda7d; flex: none; }.field-tool.warning svg { color: #ff9586; }.field-tool div { display: grid; gap: 2px; }.field-tool span, .field-tool small { color: var(--text-muted); font-size: 11px; }.field-tool strong { font-size: 14px; }.viewpoint-save { justify-content: center; margin: 0; }.viewpoint-list { flex-wrap: wrap; margin: -4px 0 16px; }.viewpoint-list > span { color: var(--text-muted); font-size: 12px; }.viewpoint-list button { padding: 6px 8px; border-radius: 8px; background: var(--glass-control); border: 1px solid var(--glass-border); display: inline-flex; align-items: center; gap: 4px; }
+.field-tools { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; margin: 16px 0; }.field-tool { align-items: flex-start; padding: 11px; border: 0; border-radius: 11px; background: transparent; }.field-tool svg { color: #ffda7d; flex: none; }.field-tool.warning svg { color: #ff9586; }.field-tool div { display: grid; gap: 2px; }.field-tool span, .field-tool small { color: var(--text-muted); font-size: 11px; }.field-tool strong { font-size: 14px; }.viewpoint-save { justify-content: center; margin: 0; }.viewpoint-list { flex-wrap: wrap; margin: -4px 0 16px; }.viewpoint-list > span { color: var(--text-muted); font-size: 12px; }.viewpoint-list button { padding: 6px 8px; border-radius: 8px; background: var(--glass-control); border: 1px solid var(--glass-border); display: inline-flex; align-items: center; gap: 4px; }
 
-@media (max-width: 720px) { .alert-settings, .field-tools { grid-template-columns: 1fr; }.header-meta { display: none; }.topbar { gap: 10px; }.account-button { margin-left: auto; } }
+@media (max-width: 720px) { .alert-settings, .field-tools { grid-template-columns: 1fr; }.topbar { gap: 10px; }.account-button { margin-left: auto; } }
 
 .location-row {
   display: flex;
@@ -966,9 +918,8 @@ p {
   padding: 10px 12px;
   border-radius: 12px;
   color: var(--text-muted);
-  background: var(--glass-panel);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: var(--glass-control-blur);
+  background: transparent;
+  border: 0;
   font-size: 12px;
 }
 
@@ -1500,10 +1451,8 @@ h2 span:last-child {
   margin: 18px 0 6px;
   padding: 12px;
   border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-control);
-  backdrop-filter: var(--glass-control-blur);
-  -webkit-backdrop-filter: var(--glass-control-blur);
+  border: 0;
+  background: transparent;
 }
 
 .feedback-head {
@@ -1548,7 +1497,7 @@ h2 span:last-child {
 
 .feedback-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1767,7 +1716,6 @@ h2 span:last-child {
   }
 
   .brand-mark strong { font-size: 19px; }
-  .header-meta { display: none; }
 
   .location-row {
     align-items: center;
@@ -2272,17 +2220,15 @@ main {
 
 .topbar { min-height: 52px; padding: 0 4px; }
 .brand-mark strong { font-size: 25px; font-weight: 650; letter-spacing: -0.5px; }
-.header-meta,
 .account-button,
-.quick-actions button,
-.mode-toggle button {
+.quick-actions button {
   border: 0;
   background: rgba(9, 42, 74, 0.22);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 .quick-actions button { border-radius: 50%; }
 .mode-toggle { gap: 3px; padding: 3px; border-radius: 999px; background: rgba(8, 39, 69, 0.2); }
-.mode-toggle button { border-radius: 999px; }
+.mode-toggle button { border: 0; border-radius: 999px; background: transparent; box-shadow: none; }
 .mode-toggle button.selected { background: rgba(255, 255, 255, 0.28); color: #fff; }
 .location-row { margin: 28px 0 10px; }
 .location-button { font-size: clamp(23px, 2.3vw, 32px); letter-spacing: -0.8px; }
@@ -2369,7 +2315,7 @@ main {
   .map-grid { gap: 12px; }
   .map-grid .glass { padding: 10px; border-radius: 22px; }
   .real-map { height: 270px; min-height: 270px; border-radius: 16px; }
-  .hero { padding: 16px; border-radius: 22px; }.astro-card, .local-data { padding: 18px; border-radius: 22px; }
+  .hero { padding: 16px; border-radius: 22px; min-height: 0; }.astro-card, .local-data { padding: 18px; border-radius: 22px; }
   .forecast-strip { padding: 13px; }.forecast-days button { border-radius: 14px; }
   .metric-rail { border-radius: 18px; }.rail-item { border-radius: 14px; }
   .account-panel { position: fixed; inset: auto 12px max(12px, env(safe-area-inset-bottom)) 12px; width: auto; max-height: min(82dvh, 720px); overflow-y: auto; border-radius: 26px; }
@@ -2463,8 +2409,8 @@ main {
 
 .feedback-head { margin-bottom: 5px; }
 .feedback-meta { margin-bottom: 9px; }
-.feedback-actions { gap: 2px; padding: 3px; border-radius: 15px; background: rgba(8, 42, 74, 0.16); }
-.feedback-actions button { min-height: 38px; border: 0; border-radius: 12px; background: transparent; }
+.feedback-actions { gap: 2px; padding: 3px; border-radius: 999px !important; overflow: hidden; background: rgba(255, 255, 255, 0.06); }
+.feedback-actions button { min-height: 38px; border: 0; border-radius: 999px; background: transparent; }
 .feedback-actions button.selected { background: rgba(255, 255, 255, 0.2); box-shadow: inset 0 1px rgba(255, 255, 255, 0.15); }
 .feedback-history { margin-top: 7px; }
 .feedback-history div { padding: 7px 2px; border-radius: 0; background: transparent; }
@@ -2485,18 +2431,14 @@ main {
   .field-tools { grid-template-columns: 1fr; }
   .field-tool + .field-tool { border-top: 1px solid rgba(255, 255, 255, 0.1); border-left: 0; }
   .viewpoint-save { min-height: 44px; margin: 8px 12px 12px; }
-  .feedback-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; }
+  .feedback-actions { gap: 3px; }
 }
 
-/* Keep the header's regional clock on the visual centreline, independent of
-   the different widths of the wordmark and account avatar. */
 .topbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
-.brand-mark { justify-self: start; }
-.header-meta { justify-self: center; }
-.account-button { justify-self: end; }
 
 /* The data rail is a single, quiet glass surface—not six separate buttons. */
 .metric-rail {
@@ -2545,7 +2487,6 @@ main {
 
 @media (max-width: 720px) {
   .topbar { display: flex; }
-  .header-meta { display: none; }
   .metric-rail { border-radius: 22px; }
   .search-panel { border-radius: 22px; }
 }
@@ -2568,8 +2509,7 @@ main {
 .forecast-strip,
 .map-grid .glass,
 .metric-rail,
-.search-panel,
-.account-panel {
+.search-panel {
   background: var(--surface-panel) !important;
   border: 0 !important;
   box-shadow: inset 0 1px 0 var(--surface-hairline), 0 14px 34px var(--surface-shadow) !important;
@@ -2583,29 +2523,35 @@ main {
 .map-grid .glass,
 .metric-rail,
 .search-panel,
-.account-panel,
 .feedback-actions,
 .field-tools {
   backdrop-filter: blur(28px) saturate(135%);
   -webkit-backdrop-filter: blur(28px) saturate(135%);
 }
 
+/* Account sheet is a floating modal, not an inline content card — it needs a
+   denser frosted surface so it stays legible over the map/backdrop behind it. */
+.account-panel {
+  background: rgba(22, 46, 78, 0.86) !important;
+  border: 0 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 30px 70px rgba(4, 24, 50, 0.4) !important;
+  backdrop-filter: blur(34px) saturate(150%);
+  -webkit-backdrop-filter: blur(34px) saturate(150%);
+}
+
 .astro-mini-grid div,
 .score-pair span,
 .data-pills div,
 .forecast-days button.selected,
-.feedback-actions,
 .feedback-history div,
 .field-tools {
   background: var(--surface-inset) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11) !important;
 }
 
-.header-meta,
 .account-button,
 .quick-actions button,
 .mode-toggle,
-.mode-toggle button,
 .saved-places-bar button.selected,
 .search-panel form,
 .search-panel form button,
@@ -2616,6 +2562,12 @@ main {
 .alert-setting select {
   background: var(--surface-control) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+.mode-toggle button.selected {
+  background: rgba(255, 255, 255, 0.3) !important;
+  color: #fff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px rgba(8, 24, 48, 0.18) !important;
 }
 
 .metric-rail { overflow: hidden; }
@@ -2650,5 +2602,78 @@ main {
     background: rgb(44, 83, 122) !important;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+  }
+}
+
+/* A shared inset tile keeps the four Window Forecast values visually identical
+   to Morning Length / Evening Length in the Blue Hour card. */
+.surface-inset-card {
+  background: var(--surface-inset) !important;
+  border: 0 !important;
+  border-radius: 16px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11) !important;
+}
+
+.astro-mini-grid .surface-inset-card,
+.data-pills .surface-inset-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* History is a status row. Give it a real rounded surface instead of leaving
+   a square full-width border floating inside the feedback section. */
+.feedback-history div {
+  border: 0 !important;
+  border-radius: 14px !important;
+  background: var(--surface-inset) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11) !important;
+}
+
+/* Keep the account sheet in a dedicated top layer. The old motion wrapper was
+   an inline block in document flow, so its transform could sit under the next
+   content section and make the popover feel detached from the avatar. */
+.account-popover {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  isolation: isolate;
+}
+
+.account-panel-motion {
+  position: absolute;
+  top: 62px;
+  right: clamp(18px, 2.25vw, 36px);
+  width: min(460px, calc(100vw - 48px));
+  pointer-events: auto;
+  transform-origin: top right;
+}
+
+.account-panel-motion > .account-panel {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+@media (max-width: 720px) {
+  .account-popover {
+    position: fixed;
+    inset: 0;
+  }
+
+  .account-panel-motion {
+    top: auto;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+  }
+
+  .account-panel-motion > .account-panel {
+    max-height: min(82dvh, 720px);
+    overflow-y: auto;
   }
 }

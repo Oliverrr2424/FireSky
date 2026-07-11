@@ -2975,17 +2975,9 @@ function App() {
   function toggleSunsetReaction(sentiment) {
     const currentSentiment = sunsetFeedback?.sentiment ?? null;
     const next = currentSentiment === sentiment ? null : sentiment;
-    updateSunsetFeedback({ sentiment: next });
+    updateSunsetFeedback({ sentiment: next, accurate: next == null ? null : next === 'like' });
     if (next) setFeedbackEditing(false);
     telemetry('forecast_feedback', { kind: 'sentiment', value: next ?? 'cleared' });
-  }
-
-  function toggleSunsetAccuracy(accurate) {
-    const currentAccuracy = sunsetFeedback?.accurate;
-    const next = currentAccuracy === accurate ? null : accurate;
-    updateSunsetFeedback({ accurate: next });
-    if (next != null) setFeedbackEditing(false);
-    telemetry('forecast_feedback', { kind: 'accuracy', value: next == null ? 'cleared' : String(next) });
   }
 
   function toggleNotifications() {
@@ -3075,17 +3067,17 @@ function App() {
             <SunMedium size={22} />
             <strong>FireSky Now</strong>
           </div>
-          <div className="header-meta">
-            <span>North America Today</span>
-            <b>{new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())}</b>
-          </div>
           <button className={`account-button ${account?.user ? 'signed-in' : ''}`} onClick={() => setShowAccount((value) => !value)} title="Account and alerts">
             {account?.user?.avatarUrl ? <img src={account.user.avatarUrl} alt="" /> : <UserRound size={18} />}
           </button>
         </header>
 
         <AnimatePresence>
-          {showAccount ? <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}><AccountPanel account={account} onSignIn={startSignIn} onSignOut={signOut} onClose={() => setShowAccount(false)} syncError={accountError} settings={cloudSettings} onSettingsChange={changeCloudSettings} onDelete={deleteAccount} onProfileSave={saveProfile} onPasswordChange={changePassword} lastSyncedAt={lastSyncedAt} /></motion.div> : null}
+          {showAccount ? <motion.div className="account-popover" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className="account-panel-motion" initial={{ opacity: 0, y: -8, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.985 }} transition={{ duration: 0.18, ease: 'easeOut' }}>
+              <AccountPanel account={account} onSignIn={startSignIn} onSignOut={signOut} onClose={() => setShowAccount(false)} syncError={accountError} settings={cloudSettings} onSettingsChange={changeCloudSettings} onDelete={deleteAccount} onProfileSave={saveProfile} onPasswordChange={changePassword} lastSyncedAt={lastSyncedAt} />
+            </motion.div>
+          </motion.div> : null}
         </AnimatePresence>
 
         <div className="location-row">
@@ -3171,7 +3163,7 @@ function App() {
                     <strong>{Math.round(data.current?.temperature_2m ?? 0)}°</strong>
                     <span>{currentWeather}</span>
                   </div>
-                  <h1>{dominant === 'sunset' ? 'Sunset is the better bet' : 'Sunrise is the better bet'}</h1>
+                  <h1>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, selectedOutlook.timeZone)}</h1>
                   <p>{active?.ml ? 'ML v2 chance with rule-based weather explanations and automatic fallback.' : 'Rule-based fallback from cloud layers, precipitation, visibility, humidity, aerosols, and PM2.5.'}</p>
                 </div>
                 <ScoreRing value={active.probability} label={describeScore(active.probability)} tone={activeMode} />
@@ -3206,11 +3198,11 @@ function App() {
                       <b>{formatDuration(selectedOutlook.sunrise, selectedOutlook.sunset)}</b>
                     </div>
                     <div className="astro-mini-grid">
-                      <div>
+                      <div className="surface-inset-card">
                         <span>Peak Color</span>
                         <b>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, selectedOutlook.timeZone)}</b>
                       </div>
-                      <div>
+                      <div className="surface-inset-card">
                         <span>Best Duration</span>
                         <b>{formatDuration(activeAppearanceWindow?.start, activeAppearanceWindow?.end)}</b>
                       </div>
@@ -3234,11 +3226,11 @@ function App() {
                       <b>{formatTotalDuration([selectedOutlook.blueHour.sunrise, selectedOutlook.blueHour.sunset])}</b>
                     </div>
                     <div className="astro-mini-grid">
-                      <div>
+                      <div className="surface-inset-card">
                         <span>Morning Length</span>
                         <b>{formatDuration(selectedOutlook.blueHour.sunrise.start, selectedOutlook.blueHour.sunrise.end)}</b>
                       </div>
-                      <div>
+                      <div className="surface-inset-card">
                         <span>Evening Length</span>
                         <b>{formatDuration(selectedOutlook.blueHour.sunset.start, selectedOutlook.blueHour.sunset.end)}</b>
                       </div>
@@ -3261,10 +3253,10 @@ function App() {
                   </strong>
                 </div>
                 <div className="data-pills">
-                  <div><strong>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, selectedOutlook.timeZone)}</strong><span>Peak Window</span></div>
-                  <div><strong>{formatDuration(activeAppearanceWindow?.start, activeAppearanceWindow?.end)}</strong><span>Best Duration</span></div>
-                  <div><strong>{activeAirSnapshot?.us_aqi != null ? Math.round(activeAirSnapshot.us_aqi) : '--'}</strong><span>Window AQI</span></div>
-                  <div><strong>{((activeWindow.visibility ?? 0) / 1000).toFixed(1)}km</strong><span>Window Visibility</span></div>
+                  <div className="surface-inset-card"><strong>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, selectedOutlook.timeZone)}</strong><span>Peak Window</span></div>
+                  <div className="surface-inset-card"><strong>{formatDuration(activeAppearanceWindow?.start, activeAppearanceWindow?.end)}</strong><span>Best Duration</span></div>
+                  <div className="surface-inset-card"><strong>{activeAirSnapshot?.us_aqi != null ? Math.round(activeAirSnapshot.us_aqi) : '--'}</strong><span>Window AQI</span></div>
+                  <div className="surface-inset-card"><strong>{((activeWindow.visibility ?? 0) / 1000).toFixed(1)}km</strong><span>Window Visibility</span></div>
                 </div>
                 <FactorBars score={active} />
                 <ForecastTimeline snapshots={forecastSnapshots} mode={activeMode} timeZone={selectedOutlook.timeZone} />
@@ -3284,7 +3276,7 @@ function App() {
                     <strong>{data?.scores?.sunset ? `${Math.round(data.scores.sunset.probability)}%` : '--'}</strong>
                   </div>
                   {hasSunsetFeedback && !feedbackEditing ? <div className="feedback-submitted" role="status">
-                    <div><Check size={16} /><span>Feedback submitted</span><small>{[sunsetFeedback.sentiment === 'like' ? 'Liked' : sunsetFeedback.sentiment === 'dislike' ? 'Disliked' : null, sunsetFeedback.accurate === true ? 'Accurate' : sunsetFeedback.accurate === false ? 'Not accurate' : null].filter(Boolean).join(' · ')}</small></div>
+                    <div><Check size={16} /><span>Feedback submitted</span><small>{sunsetFeedback.sentiment === 'like' ? 'Liked' : sunsetFeedback.sentiment === 'dislike' ? 'Disliked' : ''}</small></div>
                     <button type="button" onClick={() => setFeedbackEditing(true)}>Update</button>
                   </div> : <div className="feedback-actions">
                     <button
@@ -3302,20 +3294,6 @@ function App() {
                     >
                       <ThumbsDown size={15} />
                       <span>Dislike</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={sunsetFeedback?.accurate === true ? 'selected' : ''}
-                      onClick={() => toggleSunsetAccuracy(true)}
-                    >
-                      Accurate
-                    </button>
-                    <button
-                      type="button"
-                      className={sunsetFeedback?.accurate === false ? 'selected' : ''}
-                      onClick={() => toggleSunsetAccuracy(false)}
-                    >
-                      Not Accurate
                     </button>
                   </div>}
                   <div className="feedback-history">
