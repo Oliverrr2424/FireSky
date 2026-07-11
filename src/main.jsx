@@ -6,9 +6,13 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   AlertTriangle,
   Aperture,
+  Camera,
   Check,
   ChevronDown,
   CloudSun,
+  CloudRain,
+  Compass,
+  Clock3,
   Loader2,
   Bell,
   BellOff,
@@ -22,6 +26,9 @@ import {
   Share2,
   Sparkles,
   Star,
+  LogIn,
+  LogOut,
+  UserRound,
   SunMedium,
   ThumbsDown,
   ThumbsUp
@@ -52,6 +59,8 @@ const SETTINGS_STORAGE_KEY = 'firesky:mobile-settings:v1';
 const INSTALLATION_STORAGE_KEY = 'firesky:installation-id:v1';
 const SUNSET_ALERT_IDS = [7101, 7102];
 const SUNSET_ALERT_THRESHOLD = 70;
+const ACCOUNT_TOKEN_STORAGE_KEY = 'firesky:account-session:v1';
+const SNAPSHOT_STORAGE_KEY = 'firesky:forecast-snapshots:v1';
 // Capacitor's native WebView serves bundled assets from https://localhost
 // (see capacitor.config.json's androidScheme), which has no Cloudflare Pages
 // Functions behind it. Point relative /api/* calls at the deployed API (or
@@ -226,6 +235,46 @@ async function fetchJson(url, errorLabel, timeoutMs = REQUEST_TIMEOUT_MS) {
 
   pendingJsonRequests.set(url, request);
   return request;
+}
+
+function loadAccountToken() {
+  try { return window.localStorage.getItem(ACCOUNT_TOKEN_STORAGE_KEY) || ''; } catch { return ''; }
+}
+
+function saveAccountToken(token) {
+  try {
+    if (token) window.localStorage.setItem(ACCOUNT_TOKEN_STORAGE_KEY, token);
+    else window.localStorage.removeItem(ACCOUNT_TOKEN_STORAGE_KEY);
+  } catch { /* Optional cloud session storage. */ }
+}
+
+async function accountFetch(path, token, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'Cloud request failed');
+  return payload;
+}
+
+function loadSnapshotStore() {
+  try { return JSON.parse(window.localStorage.getItem(SNAPSHOT_STORAGE_KEY) || '{}'); } catch { return {}; }
+}
+
+function persistSnapshot(snapshot) {
+  const store = loadSnapshotStore();
+  const key = `${snapshot.mode}:${snapshot.eventAt}:${snapshot.latitude}:${snapshot.longitude}`;
+  const previous = Array.isArray(store[key]) ? store[key] : [];
+  const cutoff = Date.now() - 10 * 86400000;
+  const next = [...previous.filter((item) => item.calculatedAt >= cutoff && item.calculatedAt !== snapshot.calculatedAt), snapshot].sort((a, b) => a.calculatedAt - b.calculatedAt).slice(-96);
+  try { window.localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify({ ...store, [key]: next })); } catch { /* Nonessential history. */ }
+  return next;
+}
+
+function localSnapshots({ mode, eventAt, latitude, longitude }) {
+  const key = `${mode}:${eventAt}:${latitude}:${longitude}`;
+  return loadSnapshotStore()[key] || [];
 }
 
 const DEFAULT_PLACE = {
@@ -1297,7 +1346,7 @@ function forecastDayKey(forecast) {
   return formatter.format(forecast.sunset);
 }
 
-async function scheduleSunsetAlerts({ enabled, forecast, placeName, leadMinutes = 60 }) {
+async function scheduleSkyAlerts({ enabled, forecast, placeName, leadMinutes = 60, threshold = SUNSET_ALERT_THRESHOLD, sunriseEnabled = true, sunsetEnabled = true }) {
   try {
     const [{ Capacitor }, { LocalNotifications }] = await Promise.all([
       import('@capacitor/core'),
@@ -1309,9 +1358,7 @@ async function scheduleSunsetAlerts({ enabled, forecast, placeName, leadMinutes 
       notifications: SUNSET_ALERT_IDS.map((id) => ({ id }))
     });
 
-    if (!enabled || !forecast?.sunset || !forecast?.scores?.sunset) return;
-    const probability = Math.round(forecast.scores.sunset.probability ?? 0);
-    if (probability < SUNSET_ALERT_THRESHOLD) return;
+    if (!enabled) return;
 
     const permission = await LocalNotifications.checkPermissions();
     if (permission.display !== 'granted') {
@@ -1319,27 +1366,26 @@ async function scheduleSunsetAlerts({ enabled, forecast, placeName, leadMinutes 
       if (requested.display !== 'granted') return;
     }
 
-    const sunsetTs = forecast.sunset.getTime();
-    const reminders = [
-      { id: SUNSET_ALERT_IDS[0], offsetMs: leadMinutes * 60 * 1000, label: `${leadMinutes}m` },
-      { id: SUNSET_ALERT_IDS[1], offsetMs: Math.max(15, leadMinutes / 2) * 60 * 1000, label: `${Math.max(15, leadMinutes / 2)}m` }
-    ]
-      .map(({ id, offsetMs, label }) => ({
-        id,
-        label,
-        at: new Date(sunsetTs - offsetMs)
-      }))
-      .filter((entry) => entry.at.getTime() > Date.now() + 15000);
+    const modes = [
+      { mode: 'sunrise', enabled: sunriseEnabled, event: forecast.sunrise, id: SUNSET_ALERT_IDS[0] },
+      { mode: 'sunset', enabled: sunsetEnabled, event: forecast.sunset, id: SUNSET_ALERT_IDS[1] }
+    ];
+    const reminders = modes.flatMap(({ mode, enabled: modeEnabled, event, id }) => {
+      const probability = Math.round(forecast?.scores?.[mode]?.probability ?? 0);
+      if (!modeEnabled || !event || probability < threshold) return [];
+      const at = new Date(event.getTime() - leadMinutes * 60 * 1000);
+      return at.getTime() > Date.now() + 15000 ? [{ id, mode, probability, at }] : [];
+    });
 
     if (!reminders.length) return;
 
     await LocalNotifications.schedule({
       notifications: reminders.map((entry) => ({
         id: entry.id,
-        title: 'FireSky Sunset Alert',
-        body: `${placeName}: sunset chance ${probability}% (${entry.label} before sunset).`,
+        title: `FireSky ${entry.mode === 'sunrise' ? 'Sunrise' : 'Sunset'} Alert`,
+        body: `${placeName}: ${entry.mode} chance ${entry.probability}% (${leadMinutes}m before).`,
         schedule: { at: entry.at },
-        extra: { forecastMode: 'sunset' },
+        extra: { forecastMode: entry.mode },
         smallIcon: 'ic_stat_icon_config_sample',
         sound: undefined
       }))
@@ -2324,6 +2370,62 @@ function ForecastStrip({ days, activeMode, timeZone, selectedDayIndex, onSelect 
   );
 }
 
+function compassLabel(degrees) {
+  const names = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  return names[Math.round(((degrees % 360) + 360) % 360 / 45) % 8];
+}
+
+function ForecastTimeline({ snapshots, mode, timeZone }) {
+  if (!snapshots?.length) return null;
+  const max = Math.max(...snapshots.map((item) => item.probability), 1);
+  const min = Math.min(...snapshots.map((item) => item.probability), 0);
+  return (
+    <div className="forecast-timeline">
+      <div className="timeline-head"><Clock3 size={16} /><span>Forecast changes</span><small>{mode === 'sunrise' ? 'Sunrise' : 'Sunset'} event forecast</small></div>
+      <div className="timeline-bars">
+        {snapshots.map((item) => {
+          const size = 20 + ((item.probability - min) / Math.max(1, max - min)) * 80;
+          return <div className="timeline-point" key={item.calculatedAt} title={`${Math.round(item.probability)}% calculated ${formatTime(new Date(item.calculatedAt), timeZone)}`}>
+            <i style={{ height: `${size}%` }} />
+            <b>{Math.round(item.probability)}%</b>
+            <small>{formatTime(new Date(item.calculatedAt), timeZone)}</small>
+          </div>;
+        })}
+      </div>
+      <p>Each point is a new model run using forecast conditions near the target {mode}, not weather at the calculation time.</p>
+    </div>
+  );
+}
+
+function AccountPanel({ account, onSignIn, onSignOut, onClose, syncError, settings, onSettingsChange, onDelete }) {
+  const [authMode, setAuthMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  async function submitPassword(event) {
+    event.preventDefault();
+    setSubmitting(true);
+    try { await onSignIn('password', { action: authMode, email, password, displayName }); } finally { setSubmitting(false); }
+  }
+  return (
+    <GlassCard className="account-panel">
+      <div className="account-panel-head"><span><UserRound size={17} /> Account & alerts</span><button onClick={onClose} aria-label="Close account panel">×</button></div>
+      {account?.user ? <>
+        <div className="signed-in">{account.user.avatarUrl ? <img src={account.user.avatarUrl} alt="" /> : <span className="account-fallback-avatar"><UserRound size={19} /></span>}<div><strong>{account.user.displayName}</strong><small>{account.user.email || 'Apple private relay email'}</small></div><button onClick={onSignOut}><LogOut size={15} /> Sign out</button></div>
+        <div className="alert-settings">
+          <label><span>Cloud alert threshold</span><select value={settings.alertThreshold} onChange={(event) => onSettingsChange({ alertThreshold: Number(event.target.value) })}><option value={60}>60% or higher</option><option value={70}>70% or higher</option><option value={80}>80% or higher</option></select></label>
+          <label><span>Alert lead time</span><select value={settings.alertLeadMinutes} onChange={(event) => onSettingsChange({ alertLeadMinutes: Number(event.target.value) })}><option value={30}>30 minutes</option><option value={60}>1 hour</option><option value={120}>2 hours</option></select></label>
+          <label className="check-setting"><input type="checkbox" checked={settings.sunriseAlerts} onChange={(event) => onSettingsChange({ sunriseAlerts: event.target.checked })} /> Sunrise alerts</label>
+          <label className="check-setting"><input type="checkbox" checked={settings.sunsetAlerts} onChange={(event) => onSettingsChange({ sunsetAlerts: event.target.checked })} /> Sunset alerts</label>
+        </div>
+        <div className="account-actions"><button onClick={onSignOut}><LogOut size={15} /> Sign out</button><button className="destructive" onClick={onDelete}>Delete account and cloud data</button></div>
+      </> : <div className="sign-in-prompt"><p>Sign in to sync saved places, camera viewpoints, forecast changes and accuracy feedback across devices.</p><button onClick={() => onSignIn('google')}><LogIn size={16} /> Continue with Google</button><div className="password-divider"><span>or use email</span></div><form className="password-auth" onSubmit={submitPassword}>{authMode === 'signup' ? <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name (optional)" autoComplete="name" /> : null}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" autoComplete="email" required /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password (12+ characters)" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} minLength="12" required /><button type="submit" disabled={submitting}>{submitting ? 'Please wait…' : authMode === 'signup' ? 'Create account' : 'Sign in with email'}</button></form><button className="auth-mode-toggle" onClick={() => setAuthMode((mode) => mode === 'signup' ? 'login' : 'signup')}>{authMode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account'}</button></div>}
+      {syncError ? <small className="account-error">{syncError}</small> : null}
+    </GlassCard>
+  );
+}
+
 function SearchPanel({ onSelect, favorites }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -2398,11 +2500,64 @@ function App() {
   const [favorites, setFavorites] = useState(savedSettings.favorites);
   const [feedbackStore, setFeedbackStore] = useState(() => loadFeedbackStore());
   const [showSearch, setShowSearch] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
+  const [accountToken, setAccountToken] = useState(() => loadAccountToken());
+  const [account, setAccount] = useState(null);
+  const [accountError, setAccountError] = useState('');
+  const [viewpoints, setViewpoints] = useState([]);
+  const [forecastSnapshots, setForecastSnapshots] = useState([]);
+  const [sunriseAlerts, setSunriseAlerts] = useState(true);
+  const [sunsetAlerts, setSunsetAlerts] = useState(true);
+  const [alertThreshold, setAlertThreshold] = useState(SUNSET_ALERT_THRESHOLD);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const loadSeq = useRef(0);
   const userSelectedModeRef = useRef(false);
+  const snapshotSyncRef = useRef('');
 
   const title = `${place.name}${place.admin1 ? ` · ${place.admin1}` : ''}`;
+
+  const cloudSettings = { notificationsEnabled, alertLeadMinutes, sunriseAlerts, sunsetAlerts, alertThreshold };
+
+  const acceptAccountToken = useCallback(async (token) => {
+    if (!token) return;
+    saveAccountToken(token); setAccountToken(token); setAccountError('');
+    try {
+      const result = await accountFetch('/api/account', token);
+      setAccount(result);
+      if (result.settings) {
+        setNotificationsEnabled(result.settings.notifications_enabled !== 0);
+        setAlertLeadMinutes(result.settings.alert_lead_minutes || 60);
+        setSunriseAlerts(result.settings.sunrise_alerts !== 0);
+        setSunsetAlerts(result.settings.sunset_alerts !== 0);
+        setAlertThreshold(result.settings.alert_threshold || SUNSET_ALERT_THRESHOLD);
+      }
+      const sync = await accountFetch('/api/sync', token);
+      if (sync.locations?.length) setFavorites(sync.locations.map((item) => ({ ...item, country_code: item.country_code })));
+      if (sync.viewpoints?.length) setViewpoints(sync.viewpoints);
+    } catch (error) { saveAccountToken(''); setAccountToken(''); setAccount(null); setAccountError(error.message); }
+  }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('auth_token');
+    if (token) { url.searchParams.delete('auth_token'); window.history.replaceState({}, '', url); acceptAccountToken(token); }
+    else if (accountToken) acceptAccountToken(accountToken);
+  }, []);
+
+  useEffect(() => {
+    let listener;
+    (async () => {
+      try {
+        const [{ Capacitor }, { App: NativeApp }, { Browser }] = await Promise.all([import('@capacitor/core'), import('@capacitor/app'), import('@capacitor/browser')]);
+        if (!Capacitor.isNativePlatform()) return;
+        listener = await NativeApp.addListener('appUrlOpen', ({ url }) => {
+          const token = new URL(url).searchParams.get('auth_token');
+          if (token) { Browser.close().catch(() => {}); acceptAccountToken(token); }
+        });
+      } catch { /* Browser sign-in gracefully falls back to web redirect. */ }
+    })();
+    return () => listener?.remove?.();
+  }, [acceptAccountToken]);
 
   async function load(nextPlace = place, nextMode = activeMode, { force = false, silent = false } = {}) {
     const seq = loadSeq.current + 1;
@@ -2506,6 +2661,40 @@ function App() {
     saveMobileSettings({ notificationsEnabled, alertLeadMinutes, favorites });
   }, [notificationsEnabled, alertLeadMinutes, favorites]);
 
+  useEffect(() => {
+    if (!accountToken || !account?.user) return;
+    const timer = window.setTimeout(() => {
+      accountFetch('/api/account', accountToken, { method: 'PUT', body: JSON.stringify(cloudSettings) }).catch((error) => setAccountError(error.message));
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [accountToken, account?.user?.id, notificationsEnabled, alertLeadMinutes, sunriseAlerts, sunsetAlerts, alertThreshold]);
+
+  useEffect(() => {
+    if (!accountToken || !account?.user) return;
+    const timer = window.setTimeout(() => accountFetch('/api/sync', accountToken, { method: 'PUT', body: JSON.stringify({ locations: favorites, viewpoints }) }).catch((error) => setAccountError(error.message)), 700);
+    return () => window.clearTimeout(timer);
+  }, [accountToken, account?.user?.id, favorites, viewpoints]);
+
+  useEffect(() => {
+    let registrationListener;
+    let disposed = false;
+    (async () => {
+      try {
+        const [{ Capacitor }, { PushNotifications }] = await Promise.all([import('@capacitor/core'), import('@capacitor/push-notifications')]);
+        if (!accountToken || !account?.user || !Capacitor.isNativePlatform()) return;
+        registrationListener = await PushNotifications.addListener('registration', ({ value }) => {
+          if (!disposed) accountFetch('/api/devices', accountToken, { method: 'POST', body: JSON.stringify({ token: value, platform: Capacitor.getPlatform() }) }).catch((error) => setAccountError(error.message));
+        });
+        const status = await PushNotifications.checkPermissions();
+        const permission = status.receive === 'granted' ? status : await PushNotifications.requestPermissions();
+        if (permission.receive === 'granted') await PushNotifications.register();
+      } catch {
+        // FCM is configured only in release builds with google-services.json.
+      }
+    })();
+    return () => { disposed = true; registrationListener?.remove?.(); };
+  }, [accountToken, account?.user?.id]);
+
   function selectPlace(nextPlace) {
     setPlace(nextPlace);
     setSelectedDayIndex(0);
@@ -2596,6 +2785,30 @@ function App() {
   const isFavorite = favorites.some((item) => (
     Math.abs(item.latitude - place.latitude) < 0.001 && Math.abs(item.longitude - place.longitude) < 0.001
   ));
+  const eventAt = selectedOutlook?.[activeMode]?.getTime?.() || 0;
+  const sunBearing = eventAt ? sunAzimuth(new Date(eventAt), place.latitude, place.longitude) : 0;
+  const rainRisk = activeWindow?.precipProbability ?? 0;
+
+  useEffect(() => {
+    if (!eventAt) return;
+    const local = localSnapshots({ mode: activeMode, eventAt, latitude: +place.latitude.toFixed(4), longitude: +place.longitude.toFixed(4) });
+    setForecastSnapshots(local);
+    if (!accountToken) return;
+    accountFetch(`/api/forecast-history?eventAt=${eventAt}&mode=${activeMode}`, accountToken)
+      .then((result) => setForecastSnapshots(result.snapshots || local))
+      .catch(() => setForecastSnapshots(local));
+  }, [accountToken, eventAt, activeMode, place.latitude, place.longitude]);
+
+  useEffect(() => {
+    if (!data?.scores?.[activeMode] || !data?.[activeMode]) return;
+    const calculatedAt = Math.floor(Date.now() / (15 * 60 * 1000)) * 15 * 60 * 1000;
+    const snapshot = { mode: activeMode, eventAt: data[activeMode].getTime(), latitude: +place.latitude.toFixed(4), longitude: +place.longitude.toFixed(4), calculatedAt, probability: data.scores[activeMode].probability, quality: data.scores[activeMode].quality, modelVersion: data.ml?.modelVersion || 'rules' };
+    const fingerprint = `${snapshot.mode}:${snapshot.eventAt}:${snapshot.latitude}:${snapshot.longitude}:${snapshot.calculatedAt}:${Math.round(snapshot.probability)}`;
+    if (snapshotSyncRef.current === fingerprint) return;
+    snapshotSyncRef.current = fingerprint;
+    const local = persistSnapshot(snapshot); setForecastSnapshots(local);
+    if (accountToken) accountFetch('/api/forecast-history', accountToken, { method: 'POST', body: JSON.stringify(snapshot) }).catch(() => {});
+  }, [data?.scores?.[activeMode]?.probability, data?.scores?.[activeMode]?.quality, data?.[activeMode]?.getTime?.(), activeMode, place.latitude, place.longitude, accountToken]);
 
   useEffect(() => {
     if (!data?.scores?.sunset || !sunsetDay) return;
@@ -2617,13 +2830,16 @@ function App() {
   }, [data?.scores?.sunset?.probability, sunsetDay, title]);
 
   useEffect(() => {
-    scheduleSunsetAlerts({
+    scheduleSkyAlerts({
       enabled: notificationsEnabled,
       forecast: data,
       placeName: title,
-      leadMinutes: alertLeadMinutes
+      leadMinutes: alertLeadMinutes,
+      threshold: alertThreshold,
+      sunriseEnabled: sunriseAlerts,
+      sunsetEnabled: sunsetAlerts
     });
-  }, [notificationsEnabled, alertLeadMinutes, data?.sunset?.getTime?.(), data?.scores?.sunset?.probability, title]);
+  }, [notificationsEnabled, alertLeadMinutes, alertThreshold, sunriseAlerts, sunsetAlerts, data?.sunset?.getTime?.(), data?.sunrise?.getTime?.(), data?.scores?.sunset?.probability, data?.scores?.sunrise?.probability, title]);
 
   useEffect(() => {
     let listener;
@@ -2636,11 +2852,11 @@ function App() {
         ]);
         if (!Capacitor.isNativePlatform() || disposed) return;
         listener = await LocalNotifications.addListener('localNotificationActionPerformed', (event) => {
-          if (event.notification?.extra?.forecastMode === 'sunset') {
-            setActiveMode('sunset');
+          if (['sunrise', 'sunset'].includes(event.notification?.extra?.forecastMode)) {
+            setActiveMode(event.notification.extra.forecastMode);
             userSelectedModeRef.current = true;
             window.scrollTo({ top: 0, behavior: 'smooth' });
-            telemetry('notification_opened', { mode: 'sunset' });
+            telemetry('notification_opened', { mode: event.notification.extra.forecastMode });
           }
         });
       } catch {
@@ -2670,6 +2886,12 @@ function App() {
       saveFeedbackStore(next);
       return next;
     });
+    if (accountToken) {
+      accountFetch('/api/feedback', accountToken, { method: 'POST', body: JSON.stringify({
+        eventAt: data.sunset.getTime(), mode: 'sunset', placeName: title, latitude: place.latitude, longitude: place.longitude,
+        probability: data.scores.sunset.probability, outcome: patch.accurate === true ? 'yes' : patch.accurate === false ? 'no' : 'unknown', sentiment: patch.sentiment ?? sunsetFeedback?.sentiment ?? null
+      }) }).catch((error) => setAccountError(error.message));
+    }
   }
 
   function toggleSunsetReaction(sentiment) {
@@ -2701,6 +2923,42 @@ function App() {
     });
   }
 
+  function saveViewpoint() {
+    const name = window.prompt('Name this camera viewpoint', `${place.name} viewpoint`);
+    if (!name?.trim()) return;
+    setViewpoints((current) => [{ id: crypto.randomUUID(), name: name.trim(), latitude: place.latitude, longitude: place.longitude, note: '', updated_at: Date.now() }, ...current.filter((item) => Math.abs(item.latitude - place.latitude) > 0.0001 || Math.abs(item.longitude - place.longitude) > 0.0001)].slice(0, 30));
+  }
+
+  async function startSignIn(provider, passwordPayload = null) {
+    setAccountError('');
+    try {
+      if (provider === 'password') {
+        const result = await accountFetch('/api/auth/password', '', { method: 'POST', body: JSON.stringify(passwordPayload) });
+        await acceptAccountToken(result.token);
+        return;
+      }
+      const [{ Capacitor }, { Browser }] = await Promise.all([import('@capacitor/core'), import('@capacitor/browser')]);
+      const returnTo = Capacitor.isNativePlatform() ? 'com.firesky.app://auth' : window.location.origin;
+      const result = await accountFetch(`/api/auth/start?provider=${provider}&return_to=${encodeURIComponent(returnTo)}`, '');
+      if (Capacitor.isNativePlatform()) await Browser.open({ url: result.url });
+      else window.location.assign(result.url);
+    } catch (error) { setAccountError(error.message); }
+  }
+
+  function signOut() { saveAccountToken(''); setAccountToken(''); setAccount(null); setShowAccount(false); }
+
+  function changeCloudSettings(patch) {
+    if (Object.hasOwn(patch, 'alertThreshold')) setAlertThreshold(patch.alertThreshold);
+    if (Object.hasOwn(patch, 'alertLeadMinutes')) setAlertLeadMinutes(patch.alertLeadMinutes);
+    if (Object.hasOwn(patch, 'sunriseAlerts')) setSunriseAlerts(patch.sunriseAlerts);
+    if (Object.hasOwn(patch, 'sunsetAlerts')) setSunsetAlerts(patch.sunsetAlerts);
+  }
+
+  async function deleteAccount() {
+    if (!window.confirm('Delete your FireSky account and all cloud-synced locations, viewpoints, and feedback? This cannot be undone.')) return;
+    try { await accountFetch('/api/account', accountToken, { method: 'DELETE' }); signOut(); } catch (error) { setAccountError(error.message); }
+  }
+
   async function shareForecast() {
     if (!selectedOutlook?.scores?.[activeMode]) return;
     const score = Math.round(selectedOutlook.scores[activeMode].probability ?? 0);
@@ -2728,7 +2986,14 @@ function App() {
             <span>North America Today</span>
             <b>{new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())}</b>
           </div>
+          <button className={`account-button ${account?.user ? 'signed-in' : ''}`} onClick={() => setShowAccount((value) => !value)} title="Account and alerts">
+            {account?.user?.avatarUrl ? <img src={account.user.avatarUrl} alt="" /> : <UserRound size={18} />}
+          </button>
         </header>
+
+        <AnimatePresence>
+          {showAccount ? <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}><AccountPanel account={account} onSignIn={startSignIn} onSignOut={signOut} onClose={() => setShowAccount(false)} syncError={accountError} settings={cloudSettings} onSettingsChange={changeCloudSettings} onDelete={deleteAccount} /></motion.div> : null}
+        </AnimatePresence>
 
         <div className="location-row">
           <button onClick={() => setShowSearch((value) => !value)} className="location-button">
@@ -2907,6 +3172,13 @@ function App() {
                   <div><strong>{((activeWindow.visibility ?? 0) / 1000).toFixed(1)}km</strong><span>Window Visibility</span></div>
                 </div>
                 <FactorBars score={active} />
+                <ForecastTimeline snapshots={forecastSnapshots} mode={activeMode} timeZone={selectedOutlook.timeZone} />
+                <div className="field-tools">
+                  <div className="field-tool"><Compass size={18} /><div><span>Sun direction</span><strong>{Math.round(sunBearing)}° {compassLabel(sunBearing)}</strong><small>Face this direction for the {activeMode} horizon.</small></div></div>
+                  <div className={`field-tool ${rainRisk >= 45 ? 'warning' : ''}`}><CloudRain size={18} /><div><span>Precipitation alert</span><strong>{Math.round(rainRisk)}% near the window</strong><small>{rainRisk >= 45 ? 'Rain may block the view; check again before leaving.' : 'No elevated rain risk near the color window.'}</small></div></div>
+                  <button className="viewpoint-save" onClick={saveViewpoint}><Camera size={17} /> Save camera viewpoint</button>
+                </div>
+                {viewpoints.length ? <div className="viewpoint-list"><span>Saved viewpoints</span>{viewpoints.slice(0, 4).map((item) => <button key={item.id} onClick={() => selectPlace({ ...place, name: item.name, latitude: item.latitude, longitude: item.longitude })}><Camera size={13} /> {item.name}</button>)}</div> : null}
                 <div className="feedback-panel">
                   <div className="feedback-head">
                     <span>Daily Sunset Feedback</span>
@@ -2958,7 +3230,7 @@ function App() {
                     )) : <p>No daily sunset feedback yet.</p>}
                   </div>
                   <label className="alert-setting">
-                    <span>Sunset alert lead time</span>
+                    <span>Local alert lead time</span>
                     <select value={alertLeadMinutes} onChange={(event) => setAlertLeadMinutes(Number(event.target.value))}>
                       <option value={30}>30 minutes</option>
                       <option value={60}>1 hour</option>

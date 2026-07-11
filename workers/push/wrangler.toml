@@ -1,0 +1,11 @@
+name = "firesky-push"
+main = "src/index.js"
+compatibility_date = "2026-04-30"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[[d1_databases]]
+binding = "FIRESKY_DB"
+database_name = "firesky"
+database_id = "4f6a7718-0e28-4035-8b14-bd99310030a3"

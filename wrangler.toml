@@ -8,3 +8,8 @@ id = "dc605f9c3d0b4e429709b17dd91e802a"
 
 [vars]
 ML_FORECAST_URL = "https://oliverrrnh-firesky-v2-inference.hf.space/predict"
+
+[[d1_databases]]
+binding = "FIRESKY_DB"
+database_name = "firesky"
+database_id = "4f6a7718-0e28-4035-8b14-bd99310030a3"
