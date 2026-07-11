@@ -2487,3 +2487,65 @@ main {
   .viewpoint-save { min-height: 44px; margin: 8px 12px 12px; }
   .feedback-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; }
 }
+
+/* Keep the header's regional clock on the visual centreline, independent of
+   the different widths of the wordmark and account avatar. */
+.topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.brand-mark { justify-self: start; }
+.header-meta { justify-self: center; }
+.account-button { justify-self: end; }
+
+/* The data rail is a single, quiet glass surface—not six separate buttons. */
+.metric-rail {
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(255,255,255,.13), transparent 58%), var(--weather-panel);
+  box-shadow: inset 0 1px rgba(255,255,255,.16), 0 14px 34px rgba(11, 38, 69, .12);
+}
+
+.feedback-submitted {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 4px 0 2px;
+}
+.feedback-submitted > div { display: flex; align-items: center; gap: 8px; min-width: 0; color: #d8f7df; }
+.feedback-submitted small { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feedback-submitted button { flex: 0 0 auto; padding: 7px 11px; border: 0; border-radius: 999px; color: var(--text-secondary); background: rgba(255,255,255,.1); }
+
+/* Search is a contextual sheet, styled like the rest of the weather surface. */
+.search-panel {
+  padding: 12px;
+  border: 0;
+  border-radius: 26px;
+  background: linear-gradient(135deg, rgba(255,255,255,.14), transparent 55%), var(--weather-panel);
+  box-shadow: inset 0 1px rgba(255,255,255,.16), 0 14px 34px rgba(11,38,69,.14);
+}
+.search-panel form {
+  min-height: 48px;
+  border: 0;
+  border-radius: 17px;
+  background: rgba(7, 37, 66, .16);
+  box-shadow: inset 0 1px rgba(255,255,255,.11);
+}
+.search-panel form button,
+.preset-row button,
+.favorite-row button {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255,255,255,.1);
+  box-shadow: inset 0 1px rgba(255,255,255,.1);
+}
+.preset-row, .favorite-row { padding: 10px 2px 0; }
+.favorite-row > span { padding-left: 4px; }
+
+@media (max-width: 720px) {
+  .topbar { display: flex; }
+  .header-meta { display: none; }
+  .metric-rail { border-radius: 22px; }
+  .search-panel { border-radius: 22px; }
+}

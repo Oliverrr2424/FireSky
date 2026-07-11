@@ -2416,10 +2416,11 @@ function ForecastTimeline({ snapshots, mode, timeZone }) {
       <div className="timeline-bars">
         {snapshots.map((item) => {
           const size = 20 + ((item.probability - min) / Math.max(1, max - min)) * 80;
-          return <div className="timeline-point" key={item.calculatedAt} title={`${Math.round(item.probability)}% calculated ${formatTime(new Date(item.calculatedAt), timeZone)}`}>
+          const calculatedAt = item.calculatedAt ?? item.calculated_at;
+          return <div className="timeline-point" key={calculatedAt} title={`${Math.round(item.probability)}% calculated ${formatTime(calculatedAt, timeZone)}`}>
             <i style={{ height: `${size}%` }} />
             <b>{Math.round(item.probability)}%</b>
-            <small>{formatTime(new Date(item.calculatedAt), timeZone)}</small>
+            <small>{formatTime(calculatedAt, timeZone)}</small>
           </div>;
         })}
       </div>
@@ -2570,6 +2571,7 @@ function App() {
   const [feedbackStore, setFeedbackStore] = useState(() => loadFeedbackStore());
   const [showSearch, setShowSearch] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [feedbackEditing, setFeedbackEditing] = useState(false);
   const [accountToken, setAccountToken] = useState(() => loadAccountToken());
   const [account, setAccount] = useState(null);
   const [accountError, setAccountError] = useState('');
@@ -2860,6 +2862,7 @@ function App() {
   const isFavorite = favorites.some((item) => (
     Math.abs(item.latitude - place.latitude) < 0.001 && Math.abs(item.longitude - place.longitude) < 0.001
   ));
+  const hasSunsetFeedback = Boolean(sunsetFeedback?.sentiment || sunsetFeedback?.accurate != null);
   const eventAt = selectedOutlook?.[activeMode]?.getTime?.() || 0;
   const sunBearing = eventAt ? sunAzimuth(new Date(eventAt), place.latitude, place.longitude) : 0;
   const rainRisk = activeWindow?.precipProbability ?? 0;
@@ -2973,6 +2976,7 @@ function App() {
     const currentSentiment = sunsetFeedback?.sentiment ?? null;
     const next = currentSentiment === sentiment ? null : sentiment;
     updateSunsetFeedback({ sentiment: next });
+    if (next) setFeedbackEditing(false);
     telemetry('forecast_feedback', { kind: 'sentiment', value: next ?? 'cleared' });
   }
 
@@ -2980,6 +2984,7 @@ function App() {
     const currentAccuracy = sunsetFeedback?.accurate;
     const next = currentAccuracy === accurate ? null : accurate;
     updateSunsetFeedback({ accurate: next });
+    if (next != null) setFeedbackEditing(false);
     telemetry('forecast_feedback', { kind: 'accuracy', value: next == null ? 'cleared' : String(next) });
   }
 
@@ -3278,7 +3283,10 @@ function App() {
                     <span>Predicted chance</span>
                     <strong>{data?.scores?.sunset ? `${Math.round(data.scores.sunset.probability)}%` : '--'}</strong>
                   </div>
-                  <div className="feedback-actions">
+                  {hasSunsetFeedback && !feedbackEditing ? <div className="feedback-submitted" role="status">
+                    <div><Check size={16} /><span>Feedback submitted</span><small>{[sunsetFeedback.sentiment === 'like' ? 'Liked' : sunsetFeedback.sentiment === 'dislike' ? 'Disliked' : null, sunsetFeedback.accurate === true ? 'Accurate' : sunsetFeedback.accurate === false ? 'Not accurate' : null].filter(Boolean).join(' · ')}</small></div>
+                    <button type="button" onClick={() => setFeedbackEditing(true)}>Update</button>
+                  </div> : <div className="feedback-actions">
                     <button
                       type="button"
                       className={sunsetFeedback?.sentiment === 'like' ? 'selected' : ''}
@@ -3309,7 +3317,7 @@ function App() {
                     >
                       Not Accurate
                     </button>
-                  </div>
+                  </div>}
                   <div className="feedback-history">
                     {recentSunsetFeedback.length ? recentSunsetFeedback.map((item) => (
                       <div key={item.day}>
