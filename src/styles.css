@@ -2221,3 +2221,160 @@ h2 span:last-child {
     font-size: 9.5px;
   }
 }
+
+/* Apple Weather inspired web treatment: one quiet weather field, with only
+   meaningful content groups floating above it. This is a web approximation,
+   not an Apple-provided Liquid Glass implementation. */
+:root {
+  --weather-panel: rgba(20, 63, 104, 0.23);
+  --weather-panel-strong: rgba(18, 56, 94, 0.34);
+  --weather-control: rgba(12, 48, 82, 0.25);
+  --weather-hairline: rgba(255, 255, 255, 0.2);
+}
+
+main {
+  padding: clamp(20px, 3vw, 52px);
+}
+
+.app-shell {
+  width: min(100%, 1680px);
+  padding: clamp(18px, 2.25vw, 36px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: visible;
+}
+
+.app-shell::before { display: none; }
+
+.glass {
+  border: 0;
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.14), transparent 48%),
+    var(--weather-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 14px 34px rgba(11, 38, 69, 0.16);
+  backdrop-filter: blur(28px) saturate(135%);
+  -webkit-backdrop-filter: blur(28px) saturate(135%);
+}
+
+.hero,
+.astro-card,
+.local-data { background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), transparent 56%), var(--weather-panel); }
+
+.dashboard-grid { gap: 14px; }
+.map-grid { gap: 14px; min-height: 470px; }
+.map-grid .glass { min-height: 470px; padding: 14px; border-radius: 28px; }
+.real-map { height: 404px; min-height: 360px; border: 0; border-radius: 21px; }
+
+.topbar { min-height: 52px; padding: 0 4px; }
+.brand-mark strong { font-size: 25px; font-weight: 650; letter-spacing: -0.5px; }
+.header-meta,
+.account-button,
+.quick-actions button,
+.mode-toggle button {
+  border: 0;
+  background: rgba(9, 42, 74, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.quick-actions button { border-radius: 50%; }
+.mode-toggle { gap: 3px; padding: 3px; border-radius: 999px; background: rgba(8, 39, 69, 0.2); }
+.mode-toggle button { border-radius: 999px; }
+.mode-toggle button.selected { background: rgba(255, 255, 255, 0.28); color: #fff; }
+.location-row { margin: 28px 0 10px; }
+.location-button { font-size: clamp(23px, 2.3vw, 32px); letter-spacing: -0.8px; }
+
+.saved-places-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 18px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.saved-places-bar > span { flex: 0 0 auto; }
+.saved-places-bar > div { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.saved-places-bar > div::-webkit-scrollbar { display: none; }
+.saved-places-bar button { flex: 0 0 auto; padding: 7px 11px; border-radius: 999px; color: var(--text-secondary); background: transparent; }
+.saved-places-bar button.selected { color: #fff; background: rgba(255, 255, 255, 0.18); }
+
+.forecast-strip { padding: 17px 20px; }
+.forecast-days { gap: 2px; }
+.forecast-days button { border: 0; border-radius: 17px; background: transparent; min-height: 82px; }
+.forecast-days button:hover { background: rgba(255, 255, 255, 0.1); }
+.forecast-days button.selected { border: 0; background: rgba(255, 255, 255, 0.24); box-shadow: inset 0 1px 0 rgba(255,255,255,.18); }
+
+.hero { border-radius: 30px; padding: 28px; min-height: 208px; }
+.astro-card { border-radius: 30px; padding: 26px; min-height: 208px; }
+.astro-mini-grid div,
+.score-pair span,
+.data-pills div { border: 0; background: rgba(255, 255, 255, 0.1); }
+.metric-rail { gap: 4px; padding: 0; border-radius: 22px; background: rgba(13, 52, 88, 0.18); }
+.rail-item { border: 0; border-radius: 18px; background: transparent; }
+.rail-item:hover { background: rgba(255, 255, 255, 0.09); }
+.local-data { border-radius: 30px; padding: 28px; }
+.data-pills { gap: 8px; border-bottom: 0; padding-bottom: 6px; }
+.factor-bars { padding-top: 8px; }
+.factor i { background: rgba(255,255,255,.13); }
+.feedback-panel,
+.forecast-timeline,
+.field-tool { border: 0; background: rgba(9, 41, 72, 0.18); box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
+.feedback-actions button,
+.viewpoint-list button,
+.viewpoint-save { border: 0; background: rgba(255,255,255,.1); }
+
+/* Account sheet stays compact on desktop and behaves like a full-screen sheet on phones. */
+.account-panel {
+  position: absolute;
+  top: 62px;
+  right: clamp(18px, 2.25vw, 36px);
+  width: min(460px, calc(100vw - 48px));
+  margin: 0;
+  padding: 20px !important;
+  z-index: 20;
+  border-radius: 26px;
+  background: rgba(20, 57, 94, 0.68);
+  box-shadow: inset 0 1px rgba(255,255,255,.22), 0 30px 70px rgba(4, 24, 50, .35);
+}
+.account-panel-head button { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: rgba(255,255,255,.12); }
+.signed-in { margin: 14px 0 10px; }.signed-in > button { border: 0; border-radius: 999px; padding: 8px 11px; background: rgba(255,255,255,.14); color: #fff; font-size: 12px; }
+.profile-settings,
+.password-change { margin: 12px 0; padding: 0; border: 0; background: transparent; }
+.profile-settings input,
+.password-change input,
+.alert-settings select { border: 0; background: rgba(7, 36, 66, .26); box-shadow: inset 0 1px rgba(255,255,255,.1); }
+.profile-settings button,
+.password-change button { border: 0; background: rgba(255,255,255,.16); color: #fff; }
+.alert-settings { padding: 14px 0; border-top: 1px solid rgba(255,255,255,.12); border-bottom: 1px solid rgba(255,255,255,.12); }
+.account-actions button { border: 0; border-radius: 999px; background: rgba(255,255,255,.12); color: #fff; }.account-actions .destructive { color: #ffd4cf; }
+
+@media (max-width: 1180px) {
+  .map-grid, .map-grid .glass { min-height: 420px; }
+  .real-map { height: 360px; }
+}
+
+@media (max-width: 720px) {
+  main { padding: 0; }
+  .app-shell { padding: max(16px, env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom)); }
+  .glass { border-radius: 22px; }
+  .location-row { margin-top: 18px; }
+  .saved-places-bar { margin-bottom: 12px; }
+  .saved-places-bar > span { display: none; }
+  .map-grid { gap: 12px; }
+  .map-grid .glass { padding: 10px; border-radius: 22px; }
+  .real-map { height: 270px; min-height: 270px; border-radius: 16px; }
+  .hero { padding: 16px; border-radius: 22px; }.astro-card, .local-data { padding: 18px; border-radius: 22px; }
+  .forecast-strip { padding: 13px; }.forecast-days button { border-radius: 14px; }
+  .metric-rail { border-radius: 18px; }.rail-item { border-radius: 14px; }
+  .account-panel { position: fixed; inset: auto 12px max(12px, env(safe-area-inset-bottom)) 12px; width: auto; max-height: min(82dvh, 720px); overflow-y: auto; border-radius: 26px; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .account-panel { background: rgba(29, 76, 120, .95); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}

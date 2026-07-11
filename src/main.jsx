@@ -2509,6 +2509,21 @@ function SearchPanel({ onSelect, favorites }) {
   );
 }
 
+function SavedPlacesBar({ favorites, place, onSelect }) {
+  if (!favorites?.length) return null;
+  return (
+    <nav className="saved-places-bar" aria-label="Saved places">
+      <span>Saved places</span>
+      <div>
+        {favorites.map((favorite) => {
+          const selected = Math.abs(favorite.latitude - place.latitude) < 0.001 && Math.abs(favorite.longitude - place.longitude) < 0.001;
+          return <button key={`${favorite.latitude}-${favorite.longitude}`} type="button" className={selected ? 'selected' : ''} onClick={() => onSelect(favorite)}>{favorite.name}</button>;
+        })}
+      </div>
+    </nav>
+  );
+}
+
 function App() {
   const savedSettings = useMemo(() => loadMobileSettings(), []);
   const [place, setPlace] = useState(DEFAULT_PLACE);
@@ -3060,6 +3075,8 @@ function App() {
             </div>
           </div>
         </div>
+
+        <SavedPlacesBar favorites={favorites} place={place} onSelect={selectPlace} />
 
         <AnimatePresence>
           {showSearch ? (
