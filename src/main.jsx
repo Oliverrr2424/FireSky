@@ -2244,6 +2244,37 @@ function MapHeatPanel({ place, samples, type }) {
     };
   }, [center, map, samples, sampleSignature]);
 
+  // MapLibre measures its canvas only when it is created.  A responsive card can
+  // change shape later (especially when the two map cards stack on a phone), so
+  // explicitly resize and re-fit the data bounds whenever its container changes.
+  // This keeps the same forecast area in view instead of cropping it on mobile.
+  useEffect(() => {
+    if (!map || !nodeRef.current || typeof ResizeObserver === 'undefined') return undefined;
+    let frame = 0;
+    const resizeAndFit = () => {
+      frame = 0;
+      if (!mapIsUsable(map)) return;
+      map.resize();
+      if (!samples?.length) return;
+      const compact = nodeRef.current.clientWidth < 620;
+      map.fitBounds(sampleBounds(samples, center), {
+        padding: compact ? [18, 18] : [30, 30],
+        maxZoom: 7,
+        duration: 0
+      });
+    };
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(resizeAndFit);
+    });
+    observer.observe(nodeRef.current);
+    resizeAndFit();
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [center, map, samples, sampleSignature]);
+
   const zoomIn = useCallback(() => {
     if (mapIsUsable(map)) map.zoomIn({ duration: 220 });
   }, [map]);
