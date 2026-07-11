@@ -1,4 +1,4 @@
-import { accountError, accountJson, createSession, database, newSalt, normalEmail, passwordHash, readJson } from '../../_shared/account.js';
+import { accountError, accountJson, createSession, database, newSalt, normalEmail, passwordHash, readJson, requireUser } from '../../_shared/account.js';
 
 const ITERATIONS = 180000;
 
@@ -7,6 +7,19 @@ export async function onRequestPost({ request, env }) {
   if (!db) return accountError(request, 'Cloud sync is not configured yet', 503);
   try {
     const body = await readJson(request, 8 * 1024);
+    if (body.action === 'change') {
+      const auth = await requireUser(request, env);
+      if (auth.error) return accountError(request, auth.error, auth.status);
+      const currentPassword = String(body.currentPassword || '');
+      const nextPassword = String(body.nextPassword || '');
+      if (nextPassword.length < 12 || nextPassword.length > 256) return accountError(request, 'New password must be 12–256 characters');
+      const credential = await auth.db.prepare('SELECT password_hash,salt,iterations FROM password_credentials WHERE user_id=?').bind(auth.user.id).first();
+      if (!credential) return accountError(request, 'This Google account does not have an email password', 400);
+      if (await passwordHash(currentPassword, credential.salt, credential.iterations) !== credential.password_hash) return accountError(request, 'Current password is incorrect', 401);
+      const salt = newSalt(); const hash = await passwordHash(nextPassword, salt, ITERATIONS);
+      await auth.db.prepare('UPDATE password_credentials SET password_hash=?,salt=?,iterations=?,updated_at=? WHERE user_id=?').bind(hash, salt, ITERATIONS, Date.now(), auth.user.id).run();
+      return accountJson(request, { changed: true });
+    }
     const action = body.action === 'signup' ? 'signup' : 'login';
     const email = normalEmail(body.email);
     const password = String(body.password || '');

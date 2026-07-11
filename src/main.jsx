@@ -2397,30 +2397,53 @@ function ForecastTimeline({ snapshots, mode, timeZone }) {
   );
 }
 
-function AccountPanel({ account, onSignIn, onSignOut, onClose, syncError, settings, onSettingsChange, onDelete }) {
+function AccountPanel({ account, onSignIn, onSignOut, onClose, syncError, settings, onSettingsChange, onDelete, onProfileSave, onPasswordChange, lastSyncedAt }) {
   const [authMode, setAuthMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [profileName, setProfileName] = useState(account?.user?.displayName || '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [nextPassword, setNextPassword] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [accountNotice, setAccountNotice] = useState('');
+  useEffect(() => { setProfileName(account?.user?.displayName || ''); }, [account?.user?.displayName]);
   async function submitPassword(event) {
     event.preventDefault();
     setSubmitting(true);
     try { await onSignIn('password', { action: authMode, email, password, displayName }); } finally { setSubmitting(false); }
   }
+  async function saveProfile(event) {
+    event.preventDefault(); setProfileSaving(true); setAccountNotice('');
+    try { await onProfileSave(profileName); setAccountNotice('Profile saved'); } catch (error) { setAccountNotice(error.message); } finally { setProfileSaving(false); }
+  }
+  async function changePassword(event) {
+    event.preventDefault(); setPasswordSaving(true); setAccountNotice('');
+    try { await onPasswordChange(currentPassword, nextPassword); setCurrentPassword(''); setNextPassword(''); setAccountNotice('Password updated'); } catch (error) { setAccountNotice(error.message); } finally { setPasswordSaving(false); }
+  }
   return (
     <GlassCard className="account-panel">
       <div className="account-panel-head"><span><UserRound size={17} /> Account & alerts</span><button onClick={onClose} aria-label="Close account panel">×</button></div>
       {account?.user ? <>
-        <div className="signed-in">{account.user.avatarUrl ? <img src={account.user.avatarUrl} alt="" /> : <span className="account-fallback-avatar"><UserRound size={19} /></span>}<div><strong>{account.user.displayName}</strong><small>{account.user.email || 'Apple private relay email'}</small></div><button onClick={onSignOut}><LogOut size={15} /> Sign out</button></div>
+        <div className="signed-in">{account.user.avatarUrl ? <img src={account.user.avatarUrl} alt="" /> : <span className="account-fallback-avatar"><UserRound size={19} /></span>}<div><strong>{account.user.displayName}</strong><small>{account.user.email || 'Google account'}</small></div><button onClick={onSignOut}><LogOut size={15} /> Sign out</button></div>
+        <form className="profile-settings" onSubmit={saveProfile}>
+          <label><span>Display name</span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} maxLength="80" required /></label>
+          <div className="sync-status"><Check size={14} /><span>Cloud sync active</span><small>{lastSyncedAt ? `Updated ${new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' }).format(lastSyncedAt)}` : 'Syncing settings…'}</small></div>
+          <button type="submit" disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save profile'}</button>
+        </form>
         <div className="alert-settings">
+          <label className="check-setting full"><input type="checkbox" checked={settings.notificationsEnabled} onChange={(event) => onSettingsChange({ notificationsEnabled: event.target.checked })} /> Enable notifications</label>
           <label><span>Cloud alert threshold</span><select value={settings.alertThreshold} onChange={(event) => onSettingsChange({ alertThreshold: Number(event.target.value) })}><option value={60}>60% or higher</option><option value={70}>70% or higher</option><option value={80}>80% or higher</option></select></label>
           <label><span>Alert lead time</span><select value={settings.alertLeadMinutes} onChange={(event) => onSettingsChange({ alertLeadMinutes: Number(event.target.value) })}><option value={30}>30 minutes</option><option value={60}>1 hour</option><option value={120}>2 hours</option></select></label>
           <label className="check-setting"><input type="checkbox" checked={settings.sunriseAlerts} onChange={(event) => onSettingsChange({ sunriseAlerts: event.target.checked })} /> Sunrise alerts</label>
           <label className="check-setting"><input type="checkbox" checked={settings.sunsetAlerts} onChange={(event) => onSettingsChange({ sunsetAlerts: event.target.checked })} /> Sunset alerts</label>
         </div>
+        {account.user.hasPassword ? <form className="password-change" onSubmit={changePassword}><strong>Change password</strong><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Current password" autoComplete="current-password" required /><input type="password" value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} placeholder="New password (12+ characters)" autoComplete="new-password" minLength="12" required /><button type="submit" disabled={passwordSaving}>{passwordSaving ? 'Updating…' : 'Update password'}</button></form> : <p className="account-hint">You use Google sign-in. Password changes are managed by Google.</p>}
         <div className="account-actions"><button onClick={onSignOut}><LogOut size={15} /> Sign out</button><button className="destructive" onClick={onDelete}>Delete account and cloud data</button></div>
       </> : <div className="sign-in-prompt"><p>Sign in to sync saved places, camera viewpoints, forecast changes and accuracy feedback across devices.</p><button onClick={() => onSignIn('google')}><LogIn size={16} /> Continue with Google</button><div className="password-divider"><span>or use email</span></div><form className="password-auth" onSubmit={submitPassword}>{authMode === 'signup' ? <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name (optional)" autoComplete="name" /> : null}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" autoComplete="email" required /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password (12+ characters)" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} minLength="12" required /><button type="submit" disabled={submitting}>{submitting ? 'Please wait…' : authMode === 'signup' ? 'Create account' : 'Sign in with email'}</button></form><button className="auth-mode-toggle" onClick={() => setAuthMode((mode) => mode === 'signup' ? 'login' : 'signup')}>{authMode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account'}</button></div>}
+      {accountNotice ? <small className="account-notice">{accountNotice}</small> : null}
       {syncError ? <small className="account-error">{syncError}</small> : null}
     </GlassCard>
   );
@@ -2509,6 +2532,7 @@ function App() {
   const [sunriseAlerts, setSunriseAlerts] = useState(true);
   const [sunsetAlerts, setSunsetAlerts] = useState(true);
   const [alertThreshold, setAlertThreshold] = useState(SUNSET_ALERT_THRESHOLD);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const loadSeq = useRef(0);
   const userSelectedModeRef = useRef(false);
@@ -2534,6 +2558,7 @@ function App() {
       const sync = await accountFetch('/api/sync', token);
       if (sync.locations?.length) setFavorites(sync.locations.map((item) => ({ ...item, country_code: item.country_code })));
       if (sync.viewpoints?.length) setViewpoints(sync.viewpoints);
+      setLastSyncedAt(Date.now());
     } catch (error) { saveAccountToken(''); setAccountToken(''); setAccount(null); setAccountError(error.message); }
   }, []);
 
@@ -2664,14 +2689,18 @@ function App() {
   useEffect(() => {
     if (!accountToken || !account?.user) return;
     const timer = window.setTimeout(() => {
-      accountFetch('/api/account', accountToken, { method: 'PUT', body: JSON.stringify(cloudSettings) }).catch((error) => setAccountError(error.message));
+      accountFetch('/api/account', accountToken, { method: 'PUT', body: JSON.stringify(cloudSettings) })
+        .then(() => setLastSyncedAt(Date.now()))
+        .catch((error) => setAccountError(error.message));
     }, 400);
     return () => window.clearTimeout(timer);
   }, [accountToken, account?.user?.id, notificationsEnabled, alertLeadMinutes, sunriseAlerts, sunsetAlerts, alertThreshold]);
 
   useEffect(() => {
     if (!accountToken || !account?.user) return;
-    const timer = window.setTimeout(() => accountFetch('/api/sync', accountToken, { method: 'PUT', body: JSON.stringify({ locations: favorites, viewpoints }) }).catch((error) => setAccountError(error.message)), 700);
+    const timer = window.setTimeout(() => accountFetch('/api/sync', accountToken, { method: 'PUT', body: JSON.stringify({ locations: favorites, viewpoints }) })
+      .then(() => setLastSyncedAt(Date.now()))
+      .catch((error) => setAccountError(error.message)), 700);
     return () => window.clearTimeout(timer);
   }, [accountToken, account?.user?.id, favorites, viewpoints]);
 
@@ -2948,10 +2977,23 @@ function App() {
   function signOut() { saveAccountToken(''); setAccountToken(''); setAccount(null); setShowAccount(false); }
 
   function changeCloudSettings(patch) {
+    if (Object.hasOwn(patch, 'notificationsEnabled')) setNotificationsEnabled(patch.notificationsEnabled);
     if (Object.hasOwn(patch, 'alertThreshold')) setAlertThreshold(patch.alertThreshold);
     if (Object.hasOwn(patch, 'alertLeadMinutes')) setAlertLeadMinutes(patch.alertLeadMinutes);
     if (Object.hasOwn(patch, 'sunriseAlerts')) setSunriseAlerts(patch.sunriseAlerts);
     if (Object.hasOwn(patch, 'sunsetAlerts')) setSunsetAlerts(patch.sunsetAlerts);
+  }
+
+  async function saveProfile(displayName) {
+    if (!accountToken) throw new Error('Sign in is required');
+    const result = await accountFetch('/api/account', accountToken, { method: 'PUT', body: JSON.stringify({ ...cloudSettings, displayName }) });
+    setAccount((current) => current ? { ...current, user: result.user ?? { ...current.user, displayName } } : current);
+    setLastSyncedAt(Date.now());
+  }
+
+  async function changePassword(currentPassword, nextPassword) {
+    if (!accountToken) throw new Error('Sign in is required');
+    await accountFetch('/api/auth/password', accountToken, { method: 'POST', body: JSON.stringify({ action: 'change', currentPassword, nextPassword }) });
   }
 
   async function deleteAccount() {
@@ -2992,7 +3034,7 @@ function App() {
         </header>
 
         <AnimatePresence>
-          {showAccount ? <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}><AccountPanel account={account} onSignIn={startSignIn} onSignOut={signOut} onClose={() => setShowAccount(false)} syncError={accountError} settings={cloudSettings} onSettingsChange={changeCloudSettings} onDelete={deleteAccount} /></motion.div> : null}
+          {showAccount ? <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}><AccountPanel account={account} onSignIn={startSignIn} onSignOut={signOut} onClose={() => setShowAccount(false)} syncError={accountError} settings={cloudSettings} onSettingsChange={changeCloudSettings} onDelete={deleteAccount} onProfileSave={saveProfile} onPasswordChange={changePassword} lastSyncedAt={lastSyncedAt} /></motion.div> : null}
         </AnimatePresence>
 
         <div className="location-row">
