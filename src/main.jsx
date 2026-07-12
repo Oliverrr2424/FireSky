@@ -855,7 +855,7 @@ function mergeMlScore(ruleScore, mlScore) {
 }
 
 function scoreModelLabel(score) {
-  return score?.ml ? 'ML v2' : 'Rules';
+  return score?.ml ? 'Probability' : 'Weather';
 }
 
 function ruleFallbackScore(score) {
@@ -2392,7 +2392,7 @@ function ForecastStrip({ days, activeMode, timeZone, selectedDayIndex, onSelect 
             >
               <span>{index === 0 ? 'Today' : date}</span>
               <strong>{Math.round(score?.probability ?? 0)}%</strong>
-              <small>{index === 0 && score?.ml ? 'ML v2' : 'Weather'}</small>
+              <small>{index === 0 ? 'Forecast' : 'Weather'}</small>
             </button>
           );
         })}
@@ -2481,7 +2481,7 @@ function AccountPanel({ account, onSignIn, onSignOut, onClose, syncError, settin
   );
 }
 
-function SearchPanel({ onSelect, favorites }) {
+function SearchPanel({ onSelect }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -2514,16 +2514,6 @@ function SearchPanel({ onSelect, favorites }) {
           <button key={place.name} onClick={() => onSelect(place)}>{place.name}</button>
         ))}
       </div>
-      {favorites?.length ? (
-        <div className="favorite-row" aria-label="Saved locations">
-          <span>Saved</span>
-          {favorites.map((favorite) => (
-            <button key={`${favorite.latitude}-${favorite.longitude}`} type="button" onClick={() => onSelect(favorite)}>
-              <Star size={13} fill="currentColor" /> {favorite.name}
-            </button>
-          ))}
-        </div>
-      ) : null}
       {searchError ? <div className="search-error">{searchError}</div> : null}
       <AnimatePresence>
         {results.length ? (
@@ -3102,7 +3092,7 @@ function App() {
         <AnimatePresence>
           {showSearch ? (
             <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-              <SearchPanel onSelect={selectPlace} favorites={favorites} />
+              <SearchPanel onSelect={selectPlace} />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -3132,7 +3122,7 @@ function App() {
               <div className="map-grid">
                 <GlassCard delay={0.04}>
                   <h2>
-                    <span>ML Chance</span>
+                    <span>Probability</span>
                     <span>{activeMode === 'sunset' ? 'Sunset' : 'Sunrise'}</span>
                   </h2>
                   <HeatMap place={place} samples={grid} type="probability" />
@@ -3157,7 +3147,7 @@ function App() {
                     <span>{currentWeather}</span>
                   </div>
                   <h1>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, selectedOutlook.timeZone)}</h1>
-                  <p>{active?.ml ? 'ML v2 chance with rule-based weather explanations and automatic fallback.' : 'Rule-based fallback from cloud layers, precipitation, visibility, humidity, aerosols, and PM2.5.'}</p>
+                  <p>{activeMode === 'sunset' ? 'Conditions around the sunset window look promising.' : 'Conditions around the sunrise window look promising.'}</p>
                 </div>
                 <ScoreRing value={active.probability} label={describeScore(active.probability)} tone={activeMode} />
               </GlassCard>
@@ -3240,7 +3230,7 @@ function App() {
                 <div className="section-title">
                   <span>Window Forecast · Solar Corridor</span>
                   <strong className="score-pair">
-                    <span><small>Rule Score</small>{formatPercent(ruleFallbackScore(active))}</span>
+                    <span><small>Weather signal</small>{formatPercent(ruleFallbackScore(active))}</span>
                     <i />
                     <span><small>Intensity</small>{formatPercent(active.quality)}</span>
                   </strong>
@@ -3314,7 +3304,7 @@ function App() {
 
         <footer className="source-line">
           <Check size={14} />
-          <span>{data?.ml?.status === 'ok' ? 'FireSky ML v2 + Open-Meteo Forecast + Air Quality · Today only.' : 'Open-Meteo Forecast + Air Quality · Rule fallback · Today only.'}</span>
+          <span>Weather and air quality forecast · Today only.</span>
         </footer>
       </section>
     </main>
