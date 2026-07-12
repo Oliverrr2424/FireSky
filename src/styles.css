@@ -2687,19 +2687,19 @@ main {
 
 .preset-row,
 .favorite-row {
-  gap: 18px;
-  padding: 12px 2px 0;
+  gap: 14px;
+  padding: 7px 2px 0;
 }
 
 .preset-row button,
 .favorite-row button {
-  padding: 6px 0;
+  padding: 3px 0;
   border: 0 !important;
   border-radius: 999px;
   background: transparent !important;
   box-shadow: none !important;
   color: var(--text-secondary);
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .preset-row button:hover,
