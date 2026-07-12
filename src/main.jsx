@@ -2852,13 +2852,6 @@ function App() {
   }, [selectedOutlook]);
   const sunsetDay = useMemo(() => forecastDayKey(data), [data]);
   const sunsetFeedback = sunsetDay ? feedbackStore[sunsetDay] : null;
-  const recentSunsetFeedback = useMemo(
-    () => Object.values(feedbackStore)
-      .filter((item) => item?.day)
-      .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-      .slice(0, 7),
-    [feedbackStore]
-  );
   const isFavorite = favorites.some((item) => (
     Math.abs(item.latitude - place.latitude) < 0.001 && Math.abs(item.longitude - place.longitude) < 0.001
   ));
@@ -3296,15 +3289,6 @@ function App() {
                       <span>Dislike</span>
                     </button>
                   </div>}
-                  <div className="feedback-history">
-                    {recentSunsetFeedback.length ? recentSunsetFeedback.map((item) => (
-                      <div key={item.day}>
-                        <span>{item.day}</span>
-                        <strong>{Number.isFinite(item.probability) ? `${item.probability}%` : '--'}</strong>
-                        <small>{item.accurate == null ? 'Pending' : (item.accurate ? 'Accurate' : 'Not Accurate')}</small>
-                      </div>
-                    )) : <p>No daily sunset feedback yet.</p>}
-                  </div>
                   <label className="alert-setting">
                     <span>Local alert lead time</span>
                     <select value={alertLeadMinutes} onChange={(event) => setAlertLeadMinutes(Number(event.target.value))}>

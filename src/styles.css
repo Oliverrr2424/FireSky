@@ -1521,45 +1521,6 @@ h2 span:last-child {
   color: var(--text-primary);
 }
 
-.feedback-history {
-  margin-top: 10px;
-  display: grid;
-  gap: 6px;
-}
-
-.feedback-history div {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.feedback-history span {
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.feedback-history strong {
-  font-family: var(--font-display);
-  color: #fff;
-  font-size: 12px;
-}
-
-.feedback-history small {
-  justify-self: end;
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.feedback-history p {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
 .alert-setting {
   display: flex;
   align-items: center;
@@ -2412,8 +2373,6 @@ main {
 .feedback-actions { gap: 2px; padding: 3px; border-radius: 999px !important; overflow: hidden; background: rgba(255, 255, 255, 0.06); }
 .feedback-actions button { min-height: 38px; border: 0; border-radius: 999px; background: transparent; }
 .feedback-actions button.selected { background: rgba(255, 255, 255, 0.2); box-shadow: inset 0 1px rgba(255, 255, 255, 0.15); }
-.feedback-history { margin-top: 7px; }
-.feedback-history div { padding: 7px 2px; border-radius: 0; background: transparent; }
 .alert-setting { margin-top: 7px; padding: 12px 0 0; border-color: rgba(255, 255, 255, 0.12); }
 .alert-setting select { border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.12); }
 
@@ -2543,7 +2502,6 @@ main {
 .score-pair span,
 .data-pills div,
 .forecast-days button.selected,
-.feedback-history div,
 .field-tools {
   background: var(--surface-inset) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11) !important;
@@ -2618,15 +2576,6 @@ main {
 .data-pills .surface-inset-card {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-}
-
-/* History is a status row. Give it a real rounded surface instead of leaving
-   a square full-width border floating inside the feedback section. */
-.feedback-history div {
-  border: 0 !important;
-  border-radius: 14px !important;
-  background: var(--surface-inset) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11) !important;
 }
 
 /* Keep the account sheet in a dedicated top layer. The old motion wrapper was
