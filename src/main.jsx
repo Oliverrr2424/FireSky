@@ -3053,15 +3053,14 @@ function App() {
           <button className={`account-button ${account?.user ? 'signed-in' : ''}`} onClick={() => setShowAccount((value) => !value)} title="Account and alerts">
             {account?.user?.avatarUrl ? <img src={account.user.avatarUrl} alt="" /> : <UserRound size={18} />}
           </button>
+          <AnimatePresence>
+            {showAccount ? <motion.div className="account-popover" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div className="account-panel-motion" initial={{ opacity: 0, x: 6, y: -6, scale: 0.985 }} animate={{ opacity: 1, x: 0, y: 0, scale: 1 }} exit={{ opacity: 0, x: 4, y: -4, scale: 0.985 }} transition={{ duration: 0.18, ease: 'easeOut' }}>
+                <AccountPanel account={account} onSignIn={startSignIn} onSignOut={signOut} onClose={() => setShowAccount(false)} syncError={accountError} settings={cloudSettings} onSettingsChange={changeCloudSettings} onDelete={deleteAccount} onProfileSave={saveProfile} onPasswordChange={changePassword} lastSyncedAt={lastSyncedAt} />
+              </motion.div>
+            </motion.div> : null}
+          </AnimatePresence>
         </header>
-
-        <AnimatePresence>
-          {showAccount ? <motion.div className="account-popover" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <motion.div className="account-panel-motion" initial={{ opacity: 0, y: -8, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.985 }} transition={{ duration: 0.18, ease: 'easeOut' }}>
-              <AccountPanel account={account} onSignIn={startSignIn} onSignOut={signOut} onClose={() => setShowAccount(false)} syncError={accountError} settings={cloudSettings} onSettingsChange={changeCloudSettings} onDelete={deleteAccount} onProfileSave={saveProfile} onPasswordChange={changePassword} lastSyncedAt={lastSyncedAt} />
-            </motion.div>
-          </motion.div> : null}
-        </AnimatePresence>
 
         <div className="location-row">
           <button onClick={() => setShowSearch((value) => !value)} className="location-button">
