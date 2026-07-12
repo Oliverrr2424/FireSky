@@ -2892,8 +2892,12 @@ main {
   }
   .search-panel input { font-size: 15px; }
   .search-panel form button { min-height: 32px; font-size: 14px; }
-  .preset-row { gap: 14px; padding-top: 6px; }
-  .preset-row button { padding: 4px 0; font-size: 13px; }
+  .preset-row { gap: 10px; padding-top: 3px; }
+  .preset-row button {
+    padding: 2px 0;
+    font-size: 11px;
+    line-height: 1.2;
+  }
 
   .topbar .account-popover {
     position: absolute;
