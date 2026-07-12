@@ -2787,4 +2787,6 @@ main {
   .saved-places-bar { font-size: 13px; }
   .saved-places-bar button { padding: 6px 10px; font-size: 13px; }
   .account-panel-motion { top: auto; right: 12px; }
+  .location-admin,
+  .location-separator { display: none; }
 }

@@ -3065,7 +3065,8 @@ function App() {
 
         <div className="location-row">
           <button onClick={() => setShowSearch((value) => !value)} className="location-button">
-            <span>{title}</span>
+            <span className="location-city">{place.name}</span>
+            {place.admin1 ? <><span className="location-separator"> · </span><span className="location-admin">{place.admin1}</span></> : null}
             <ChevronDown size={20} />
           </button>
           <div className="location-controls">
