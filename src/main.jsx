@@ -9,6 +9,7 @@ import {
   Camera,
   Check,
   ChevronDown,
+  ChevronRight,
   CloudSun,
   CloudRain,
   Compass,
@@ -3066,7 +3067,7 @@ function App() {
           <button onClick={() => setShowSearch((value) => !value)} className="location-button">
             <span className="location-city">{place.name}</span>
             {place.admin1 ? <><span className="location-separator"> · </span><span className="location-admin">{place.admin1}</span></> : null}
-            <ChevronDown size={20} />
+            {showSearch ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
           </button>
           <div className="location-controls">
             <div className="mode-toggle" aria-label="Forecast mode">
