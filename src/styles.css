@@ -2917,3 +2917,27 @@ main {
     overflow-y: auto;
   }
 }
+
+/* The compact 900px header rule above must not turn the phone account sheet
+   back into an avatar popover. Keep sign-in in the dedicated bottom sheet. */
+@media (max-width: 720px) {
+  .topbar .account-popover {
+    position: fixed;
+    inset: 0;
+    top: 0;
+  }
+
+  .topbar .account-panel-motion {
+    position: fixed;
+    top: auto;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+  }
+
+  .topbar .account-panel-motion > .account-panel {
+    max-height: min(82dvh, 720px);
+    overflow-y: auto;
+  }
+}

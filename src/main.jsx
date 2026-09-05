@@ -2576,6 +2576,7 @@ function App() {
   const loadSeq = useRef(0);
   const userSelectedModeRef = useRef(false);
   const snapshotSyncRef = useRef('');
+  const nativeAuthRef = useRef({ listener: null, setup: null });
 
   const title = `${place.name}${place.admin1 ? ` · ${place.admin1}` : ''}`;
 
@@ -2601,6 +2602,46 @@ function App() {
     } catch (error) { saveAccountToken(''); setAccountToken(''); setAccount(null); setAccountError(error.message); }
   }, []);
 
+  const acceptNativeAuthUrl = useCallback(async (rawUrl, Browser) => {
+    try {
+      const url = new URL(rawUrl);
+      if (url.protocol !== 'com.firesky.app:' || url.hostname !== 'auth') return false;
+      const token = url.searchParams.get('auth_token');
+      if (!token) {
+        setAccountError('Google sign-in returned without a session. Please try again.');
+        return true;
+      }
+      if (Browser?.close) await Browser.close().catch(() => {});
+      await acceptAccountToken(token);
+      return true;
+    } catch {
+      setAccountError('Unable to read the Google sign-in result. Please try again.');
+      return true;
+    }
+  }, [acceptAccountToken]);
+
+  const ensureNativeAuthListener = useCallback(async () => {
+    if (nativeAuthRef.current.listener) return nativeAuthRef.current.setup;
+    if (nativeAuthRef.current.setup) return nativeAuthRef.current.setup;
+    nativeAuthRef.current.setup = (async () => {
+      const [{ Capacitor }, { App: NativeApp }, { Browser }] = await Promise.all([
+        import('@capacitor/core'),
+        import('@capacitor/app'),
+        import('@capacitor/browser')
+      ]);
+      if (!Capacitor.isNativePlatform()) return null;
+      const listener = await NativeApp.addListener('appUrlOpen', ({ url }) => acceptNativeAuthUrl(url, Browser));
+      nativeAuthRef.current.listener = listener;
+      const launch = await NativeApp.getLaunchUrl();
+      if (launch?.url) await acceptNativeAuthUrl(launch.url, Browser);
+      return { Browser };
+    })().catch((error) => {
+      nativeAuthRef.current.setup = null;
+      throw error;
+    });
+    return nativeAuthRef.current.setup;
+  }, [acceptNativeAuthUrl]);
+
   useEffect(() => {
     const url = new URL(window.location.href);
     const token = url.searchParams.get('auth_token');
@@ -2609,19 +2650,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    let listener;
-    (async () => {
-      try {
-        const [{ Capacitor }, { App: NativeApp }, { Browser }] = await Promise.all([import('@capacitor/core'), import('@capacitor/app'), import('@capacitor/browser')]);
-        if (!Capacitor.isNativePlatform()) return;
-        listener = await NativeApp.addListener('appUrlOpen', ({ url }) => {
-          const token = new URL(url).searchParams.get('auth_token');
-          if (token) { Browser.close().catch(() => {}); acceptAccountToken(token); }
-        });
-      } catch { /* Browser sign-in gracefully falls back to web redirect. */ }
-    })();
-    return () => listener?.remove?.();
-  }, [acceptAccountToken]);
+    ensureNativeAuthListener().catch(() => {});
+    return () => {
+      nativeAuthRef.current.listener?.remove?.();
+      nativeAuthRef.current = { listener: null, setup: null };
+    };
+  }, [ensureNativeAuthListener]);
 
   async function load(nextPlace = place, nextMode = activeMode, { force = false, silent = false } = {}) {
     const seq = loadSeq.current + 1;
@@ -2993,10 +3027,11 @@ function App() {
         await acceptAccountToken(result.token);
         return;
       }
-      const [{ Capacitor }, { Browser }] = await Promise.all([import('@capacitor/core'), import('@capacitor/browser')]);
-      const returnTo = Capacitor.isNativePlatform() ? 'com.firesky.app://auth' : window.location.origin;
+      const { Capacitor } = await import('@capacitor/core');
+      const nativeAuth = Capacitor.isNativePlatform() ? await ensureNativeAuthListener() : null;
+      const returnTo = nativeAuth ? 'com.firesky.app://auth' : window.location.origin;
       const result = await accountFetch(`/api/auth/start?provider=${provider}&return_to=${encodeURIComponent(returnTo)}`, '');
-      if (Capacitor.isNativePlatform()) await Browser.open({ url: result.url });
+      if (nativeAuth) await nativeAuth.Browser.open({ url: result.url });
       else window.location.assign(result.url);
     } catch (error) { setAccountError(error.message); }
   }

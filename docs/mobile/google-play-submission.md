@@ -28,4 +28,6 @@
 - Upload AAB to **Internal testing** first.
 - Validate crashes/ANR and policy warnings.
 - Promote to production only after test feedback is resolved.
-- Create at least 12 opted-in internal testers across Android versions, and verify Google sign-in, email/password registration, account deletion, location denial, notification permission denial, FCM delivery, local-notification fallback, and an expired OAuth session.
+- Internal testing supports up to 100 testers and does not require 12 testers. Each tester must accept the invitation using the same Google account as their phone's Play Store.
+- For personal accounts subject to production-access testing requirements, run a **closed test** with at least 12 testers opted in continuously for at least 14 days before applying for production access.
+- Across supported Android versions, verify Google sign-in, email/password registration, account deletion, location denial, notification permission denial, FCM delivery, local-notification fallback, and an expired OAuth session.
