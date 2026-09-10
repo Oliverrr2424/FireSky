@@ -2607,14 +2607,16 @@ function App() {
       const url = new URL(rawUrl);
       if (url.protocol !== 'com.firesky.app:' || url.hostname !== 'auth') return false;
       const token = url.searchParams.get('auth_token');
+      if (Browser?.close) await Browser.close().catch(() => {});
+      setShowAccount(true);
       if (!token) {
         setAccountError('Google sign-in returned without a session. Please try again.');
         return true;
       }
-      if (Browser?.close) await Browser.close().catch(() => {});
       await acceptAccountToken(token);
       return true;
     } catch {
+      setShowAccount(true);
       setAccountError('Unable to read the Google sign-in result. Please try again.');
       return true;
     }
@@ -2645,7 +2647,7 @@ function App() {
   useEffect(() => {
     const url = new URL(window.location.href);
     const token = url.searchParams.get('auth_token');
-    if (token) { url.searchParams.delete('auth_token'); window.history.replaceState({}, '', url); acceptAccountToken(token); }
+    if (token) { url.searchParams.delete('auth_token'); window.history.replaceState({}, '', url); setShowAccount(true); acceptAccountToken(token); }
     else if (accountToken) acceptAccountToken(accountToken);
   }, []);
 
@@ -3262,78 +3264,86 @@ function App() {
                 <MetricRail activeMode={activeMode} data={selectedOutlook} />
               </div>
 
-              <GlassCard className="local-data" delay={0.2}>
-                <div className="section-title">
-                  <span>Window Forecast · Solar Corridor</span>
-                  <strong className="score-pair">
-                    <span><small>Weather signal</small>{formatPercent(ruleFallbackScore(active))}</span>
-                    <i />
-                    <span><small>Intensity</small>{formatPercent(active.quality)}</span>
-                  </strong>
-                </div>
-                <div className="data-pills">
-                  <div className="surface-inset-card"><strong>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, selectedOutlook.timeZone)}</strong><span>Peak Window</span></div>
-                  <div className="surface-inset-card"><strong>{formatDuration(activeAppearanceWindow?.start, activeAppearanceWindow?.end)}</strong><span>Best Duration</span></div>
-                  <div className="surface-inset-card"><strong>{activeAirSnapshot?.us_aqi != null ? Math.round(activeAirSnapshot.us_aqi) : '--'}</strong><span>Window AQI</span></div>
-                  <div className="surface-inset-card"><strong>{((activeWindow.visibility ?? 0) / 1000).toFixed(1)}km</strong><span>Window Visibility</span></div>
-                </div>
-                <FactorBars score={active} />
-                <ForecastTimeline snapshots={forecastSnapshots} mode={activeMode} timeZone={selectedOutlook.timeZone} />
-                <div className="field-tools">
-                  <div className="field-tool"><Compass size={18} /><div><span>Sun direction</span><strong>{Math.round(sunBearing)}° {compassLabel(sunBearing)}</strong><small>Face this direction for the {activeMode} horizon.</small></div></div>
-                  <div className={`field-tool ${rainRisk >= 45 ? 'warning' : ''}`}><CloudRain size={18} /><div><span>Precipitation alert</span><strong>{Math.round(rainRisk)}% near the window</strong><small>{rainRisk >= 45 ? 'Rain may block the view; check again before leaving.' : 'No elevated rain risk near the color window.'}</small></div></div>
-                  <button className="viewpoint-save" onClick={saveViewpoint}><Camera size={17} /> Save camera viewpoint</button>
-                </div>
-                {viewpoints.length ? <div className="viewpoint-list"><span>Saved viewpoints</span>{viewpoints.slice(0, 4).map((item) => <button key={item.id} onClick={() => selectPlace({ ...place, name: item.name, latitude: item.latitude, longitude: item.longitude })}><Camera size={13} /> {item.name}</button>)}</div> : null}
-                <div className="feedback-panel">
-                  <div className="feedback-head">
-                    <span>Daily Sunset Feedback</span>
-                    <b>{sunsetDay || '--'}</b>
+              <div className="local-data-group">
+                <GlassCard className="local-data" delay={0.2}>
+                  <div className="section-title">
+                    <span>Window Forecast · Solar Corridor</span>
+                    <strong className="score-pair">
+                      <span><small>Weather signal</small>{formatPercent(ruleFallbackScore(active))}</span>
+                      <i />
+                      <span><small>Intensity</small>{formatPercent(active.quality)}</span>
+                    </strong>
                   </div>
-                  <div className="feedback-meta">
-                    <span>Predicted chance</span>
-                    <strong>{data?.scores?.sunset ? `${Math.round(data.scores.sunset.probability)}%` : '--'}</strong>
+                  <div className="data-pills">
+                    <div className="surface-inset-card"><strong>{formatRange(activeAppearanceWindow?.start, activeAppearanceWindow?.end, selectedOutlook.timeZone)}</strong><span>Peak Window</span></div>
+                    <div className="surface-inset-card"><strong>{formatDuration(activeAppearanceWindow?.start, activeAppearanceWindow?.end)}</strong><span>Best Duration</span></div>
+                    <div className="surface-inset-card"><strong>{activeAirSnapshot?.us_aqi != null ? Math.round(activeAirSnapshot.us_aqi) : '--'}</strong><span>Window AQI</span></div>
+                    <div className="surface-inset-card"><strong>{((activeWindow.visibility ?? 0) / 1000).toFixed(1)}km</strong><span>Window Visibility</span></div>
                   </div>
-                  {hasSunsetFeedback && !feedbackEditing ? <div className="feedback-submitted" role="status">
-                    <div><Check size={16} /><span>Feedback submitted</span><small>{sunsetFeedback.sentiment === 'like' ? 'Liked' : sunsetFeedback.sentiment === 'dislike' ? 'Disliked' : ''}</small></div>
-                    <button type="button" onClick={() => setFeedbackEditing(true)}>Update</button>
-                  </div> : <div className="feedback-actions">
-                    <button
-                      type="button"
-                      className={sunsetFeedback?.sentiment === 'like' ? 'selected' : ''}
-                      onClick={() => toggleSunsetReaction('like')}
-                    >
-                      <ThumbsUp size={15} />
-                      <span>Like</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={sunsetFeedback?.sentiment === 'dislike' ? 'selected' : ''}
-                      onClick={() => toggleSunsetReaction('dislike')}
-                    >
-                      <ThumbsDown size={15} />
-                      <span>Dislike</span>
-                    </button>
-                  </div>}
-                  <label className="alert-setting">
-                    <span>Local alert lead time</span>
-                    <select value={alertLeadMinutes} onChange={(event) => setAlertLeadMinutes(Number(event.target.value))}>
-                      <option value={30}>30 minutes</option>
-                      <option value={60}>1 hour</option>
-                      <option value={120}>2 hours</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="verdict">
-                  <AlertTriangle size={18} />
-                  <span>
-                    {active.blockers.length
-                      ? `Local constraints: ${active.blockers.join('; ')}. `
-                      : `Local advantages: ${active.boosts.join('; ')}. `}
-                    Confidence is about {Math.round(active.confidence)}%.
-                  </span>
-                </div>
-              </GlassCard>
+                  <FactorBars score={active} />
+                </GlassCard>
+
+                <GlassCard className="local-data" delay={0.24}>
+                  <ForecastTimeline snapshots={forecastSnapshots} mode={activeMode} timeZone={selectedOutlook.timeZone} />
+                  <div className="field-tools">
+                    <div className="field-tool"><Compass size={18} /><div><span>Sun direction</span><strong>{Math.round(sunBearing)}° {compassLabel(sunBearing)}</strong><small>Face this direction for the {activeMode} horizon.</small></div></div>
+                    <div className={`field-tool ${rainRisk >= 45 ? 'warning' : ''}`}><CloudRain size={18} /><div><span>Precipitation alert</span><strong>{Math.round(rainRisk)}% near the window</strong><small>{rainRisk >= 45 ? 'Rain may block the view; check again before leaving.' : 'No elevated rain risk near the color window.'}</small></div></div>
+                    <button className="viewpoint-save" onClick={saveViewpoint}><Camera size={17} /> Save camera viewpoint</button>
+                  </div>
+                  {viewpoints.length ? <div className="viewpoint-list"><span>Saved viewpoints</span>{viewpoints.slice(0, 4).map((item) => <button key={item.id} onClick={() => selectPlace({ ...place, name: item.name, latitude: item.latitude, longitude: item.longitude })}><Camera size={13} /> {item.name}</button>)}</div> : null}
+                </GlassCard>
+
+                <GlassCard className="local-data" delay={0.28}>
+                  <div className="feedback-panel">
+                    <div className="feedback-head">
+                      <span>Daily Sunset Feedback</span>
+                      <b>{sunsetDay || '--'}</b>
+                    </div>
+                    <div className="feedback-meta">
+                      <span>Predicted chance</span>
+                      <strong>{data?.scores?.sunset ? `${Math.round(data.scores.sunset.probability)}%` : '--'}</strong>
+                    </div>
+                    {hasSunsetFeedback && !feedbackEditing ? <div className="feedback-submitted" role="status">
+                      <div><Check size={16} /><span>Feedback submitted</span><small>{sunsetFeedback.sentiment === 'like' ? 'Liked' : sunsetFeedback.sentiment === 'dislike' ? 'Disliked' : ''}</small></div>
+                      <button type="button" onClick={() => setFeedbackEditing(true)}>Update</button>
+                    </div> : <div className="feedback-actions">
+                      <button
+                        type="button"
+                        className={sunsetFeedback?.sentiment === 'like' ? 'selected' : ''}
+                        onClick={() => toggleSunsetReaction('like')}
+                      >
+                        <ThumbsUp size={15} />
+                        <span>Like</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={sunsetFeedback?.sentiment === 'dislike' ? 'selected' : ''}
+                        onClick={() => toggleSunsetReaction('dislike')}
+                      >
+                        <ThumbsDown size={15} />
+                        <span>Dislike</span>
+                      </button>
+                    </div>}
+                    <label className="alert-setting">
+                      <span>Local alert lead time</span>
+                      <select value={alertLeadMinutes} onChange={(event) => setAlertLeadMinutes(Number(event.target.value))}>
+                        <option value={30}>30 minutes</option>
+                        <option value={60}>1 hour</option>
+                        <option value={120}>2 hours</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="verdict">
+                    <AlertTriangle size={18} />
+                    <span>
+                      {active.blockers.length
+                        ? `Local constraints: ${active.blockers.join('; ')}. `
+                        : `Local advantages: ${active.boosts.join('; ')}. `}
+                      Confidence is about {Math.round(active.confidence)}%.
+                    </span>
+                  </div>
+                </GlassCard>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

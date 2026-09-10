@@ -1315,8 +1315,14 @@ h2 span:last-child {
   background: linear-gradient(90deg, #246097, #3a9cb8, #6cb881, #f4cf49, #ed703e, #c23646);
 }
 
-.local-data {
+.local-data-group {
   grid-area: local;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.local-data {
   padding: 22px;
   margin-top: 0;
 }
@@ -1963,7 +1969,7 @@ h2 span:last-child {
     grid-area: controls;
   }
 
-  .local-data {
+  .local-data-group {
     grid-area: local;
   }
 
@@ -2176,6 +2182,7 @@ main {
 
 .dashboard-grid { gap: 14px; }
 .map-grid { gap: 14px; min-height: 470px; }
+.local-data-group { gap: 14px; }
 .map-grid .glass { min-height: 470px; padding: 14px; border-radius: 28px; }
 .real-map { height: 404px; min-height: 360px; border: 0; border-radius: 21px; }
 
@@ -2236,18 +2243,12 @@ main {
 .viewpoint-list button,
 .viewpoint-save { border: 0; background: rgba(255,255,255,.1); }
 
-/* Account sheet stays compact on desktop and behaves like a full-screen sheet on phones. */
+/* Position for the account sheet itself lives on .account-popover /
+   .account-panel-motion below, which anchor it as a compact dropdown on
+   desktop and a dedicated full-screen page on phones. */
 .account-panel {
-  position: absolute;
-  top: 62px;
-  right: clamp(18px, 2.25vw, 36px);
-  width: min(460px, calc(100vw - 48px));
-  margin: 0;
   padding: 20px !important;
-  z-index: 20;
   border-radius: 26px;
-  background: rgba(20, 57, 94, 0.68);
-  box-shadow: inset 0 1px rgba(255,255,255,.22), 0 30px 70px rgba(4, 24, 50, .35);
 }
 .account-panel-head button { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: rgba(255,255,255,.12); }
 .signed-in { margin: 14px 0 10px; }.signed-in > button { border: 0; border-radius: 999px; padding: 8px 11px; background: rgba(255,255,255,.14); color: #fff; font-size: 12px; }
@@ -2277,9 +2278,9 @@ main {
   .map-grid .glass { padding: 10px; border-radius: 22px; }
   .real-map { height: 270px; min-height: 270px; border-radius: 16px; }
   .hero { padding: 16px; border-radius: 22px; min-height: 0; }.astro-card, .local-data { padding: 18px; border-radius: 22px; }
+  .local-data-group { gap: 12px; }
   .forecast-strip { padding: 13px; }.forecast-days button { border-radius: 14px; }
   .metric-rail { border-radius: 18px; }.rail-item { border-radius: 14px; }
-  .account-panel { position: fixed; inset: auto 12px max(12px, env(safe-area-inset-bottom)) 12px; width: auto; max-height: min(82dvh, 720px); overflow-y: auto; border-radius: 26px; }
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -2578,26 +2579,10 @@ main {
   -webkit-backdrop-filter: none;
 }
 
-/* Keep the account sheet in a dedicated top layer. The old motion wrapper was
-   an inline block in document flow, so its transform could sit under the next
-   content section and make the popover feel detached from the avatar. */
-.account-popover {
-  position: absolute;
-  inset: 0;
-  z-index: 50;
-  pointer-events: none;
-  isolation: isolate;
-}
-
-.account-panel-motion {
-  position: absolute;
-  top: 62px;
-  right: clamp(18px, 2.25vw, 36px);
-  width: min(460px, calc(100vw - 48px));
-  pointer-events: auto;
-  transform-origin: top right;
-}
-
+/* The account sheet's own position is driven by its .topbar-scoped ancestor
+   rules further down (higher specificity: dropdown on desktop, full-screen
+   page on phones). This just keeps the card itself relative to its wrapper
+   instead of the absolute position it'd otherwise inherit from .glass. */
 .account-panel-motion > .account-panel {
   position: relative !important;
   inset: auto !important;
@@ -2605,26 +2590,6 @@ main {
   right: auto !important;
   width: 100% !important;
   margin: 0 !important;
-}
-
-@media (max-width: 720px) {
-  .account-popover {
-    position: fixed;
-    inset: 0;
-  }
-
-  .account-panel-motion {
-    top: auto;
-    right: 12px;
-    bottom: max(12px, env(safe-area-inset-bottom));
-    left: 12px;
-    width: auto;
-  }
-
-  .account-panel-motion > .account-panel {
-    max-height: min(82dvh, 720px);
-    overflow-y: auto;
-  }
 }
 
 /* Location/search dropdown follows the same open, editorial treatment as the
@@ -2691,6 +2656,8 @@ main {
   padding: 7px 2px 0;
 }
 
+/* The base .preset-row button rule frosts these with a backdrop-filter, which
+   reads as a pill behind each city even with a transparent background. */
 .preset-row button,
 .favorite-row button {
   padding: 3px 0;
@@ -2698,6 +2665,8 @@ main {
   border-radius: 999px;
   background: transparent !important;
   box-shadow: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   color: var(--text-secondary);
   font-size: 13px;
 }
@@ -2898,46 +2867,31 @@ main {
     font-size: 11px;
     line-height: 1.2;
   }
-
-  .topbar .account-popover {
-    position: absolute;
-    inset: auto 0 auto auto;
-    top: 100%;
-  }
-  .topbar .account-panel-motion {
-    position: absolute;
-    top: 10px;
-    right: 48px;
-    bottom: auto;
-    left: auto;
-    width: min(460px, calc(100vw - 72px));
-  }
-  .account-panel-motion > .account-panel {
-    max-height: min(78dvh, 720px);
-    overflow-y: auto;
-  }
 }
 
-/* The compact 900px header rule above must not turn the phone account sheet
-   back into an avatar popover. Keep sign-in in the dedicated bottom sheet. */
+/* Below 720px the account sheet is its own full-screen page, not a dropdown
+   anchored to the avatar — there isn't room to float a card and still read it. */
 @media (max-width: 720px) {
   .topbar .account-popover {
     position: fixed;
     inset: 0;
-    top: 0;
+    width: auto;
+    height: auto;
+    background: rgba(6, 22, 42, 0.55);
   }
 
   .topbar .account-panel-motion {
     position: fixed;
-    top: auto;
-    right: 12px;
-    bottom: max(12px, env(safe-area-inset-bottom));
-    left: 12px;
+    inset: 0;
     width: auto;
   }
 
   .topbar .account-panel-motion > .account-panel {
-    max-height: min(82dvh, 720px);
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0 !important;
+    padding: max(24px, env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom)) !important;
     overflow-y: auto;
   }
 }
