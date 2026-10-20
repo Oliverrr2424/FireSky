@@ -1,0 +1,866 @@
+package com.firesky.app.ui
+
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.firesky.app.R
+import com.firesky.app.UiState
+import com.firesky.app.data.AccountUser
+import com.firesky.app.ui.theme.DisplayFamily
+import com.firesky.app.ui.theme.SurfaceControl
+import com.firesky.app.ui.theme.SurfaceHairline
+import com.firesky.app.ui.theme.SurfaceInset
+import com.firesky.app.ui.theme.SurfacePanel
+import com.firesky.app.ui.theme.TextMuted
+import com.firesky.app.ui.theme.TextPrimary
+import com.firesky.app.ui.theme.TextSecondary
+import com.firesky.app.ui.theme.UiFamily
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+data class SettingsPatch(
+    val notificationsEnabled: Boolean? = null,
+    val alertThreshold: Int? = null,
+    val alertLeadMinutes: Int? = null,
+    val sunriseAlerts: Boolean? = null,
+    val sunsetAlerts: Boolean? = null,
+)
+
+@Composable
+fun AccountPage(
+    state: UiState,
+    onClose: () -> Unit,
+    onSignInPassword: (String, String, String, String?) -> Unit,
+    onGoogle: () -> Unit,
+    onSignOut: () -> Unit,
+    onSaveProfile: (String) -> Unit,
+    onChangePassword: (String, String, (String?) -> Unit) -> Unit,
+    onDelete: ((String?) -> Unit) -> Unit,
+    onSettingsChanged: (SettingsPatch) -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxWidth < 800.dp
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 1180.dp)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(
+                        horizontal = if (compact) 14.dp else 32.dp,
+                        vertical = if (compact) 14.dp else 32.dp,
+                    ),
+            ) {
+                AccountTopBar(compact = compact, onClose = onClose)
+                Spacer(Modifier.height(if (compact) 22.dp else 56.dp))
+
+                if (compact) {
+                    AccountIntro(signedIn = state.account?.user != null, compact = true)
+                    Spacer(Modifier.height(22.dp))
+                    AccountContent(
+                        state = state,
+                        compact = true,
+                        onSignInPassword = onSignInPassword,
+                        onGoogle = onGoogle,
+                        onSignOut = onSignOut,
+                        onSaveProfile = onSaveProfile,
+                        onChangePassword = onChangePassword,
+                        onDelete = onDelete,
+                        onSettingsChanged = onSettingsChanged,
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(64.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        AccountIntro(signedIn = state.account?.user != null, compact = false, modifier = Modifier.weight(0.72f))
+                        AccountContent(
+                            state = state,
+                            compact = false,
+                            modifier = Modifier.weight(1.28f),
+                            onSignInPassword = onSignInPassword,
+                            onGoogle = onGoogle,
+                            onSignOut = onSignOut,
+                            onSaveProfile = onSaveProfile,
+                            onChangePassword = onChangePassword,
+                            onDelete = onDelete,
+                            onSettingsChanged = onSettingsChanged,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccountTopBar(compact: Boolean, onClose: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(if (compact) 48.dp else 56.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(SurfaceControl)
+                .clickable(onClick = onClose),
+            contentAlignment = Alignment.Center,
+        ) {
+            LucideIcon(R.drawable.ic_chevron_left, "Back to forecast", tint = TextPrimary, size = 22.dp)
+        }
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LucideIcon(
+                R.drawable.ic_sun_medium,
+                null,
+                tint = Color.White,
+                size = if (compact) 19.dp else 22.dp,
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "FireSky Now",
+                color = Color.White,
+                fontFamily = DisplayFamily,
+                fontSize = (if (compact) 20 else 25).sp,
+                fontWeight = FontWeight.W600,
+                letterSpacing = (-0.5).sp,
+            )
+        }
+        Spacer(Modifier.width(44.dp))
+    }
+}
+
+@Composable
+private fun AccountIntro(signedIn: Boolean, compact: Boolean, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(
+            text = if (signedIn) "Your FireSky account" else "Sign in to FireSky",
+            color = Color.White,
+            fontFamily = DisplayFamily,
+            fontSize = (if (compact) 34 else 48).sp,
+            fontWeight = FontWeight.W700,
+            lineHeight = (if (compact) 35 else 49).sp,
+            letterSpacing = (-1.5).sp,
+        )
+        Spacer(Modifier.height(if (compact) 10.dp else 18.dp))
+        Text(
+            text = if (signedIn) {
+                "Keep your profile, forecast alerts and saved photography plans in sync."
+            } else {
+                "Save locations, camera viewpoints and forecast history across your devices."
+            },
+            color = TextSecondary,
+            fontSize = (if (compact) 14 else 16).sp,
+            lineHeight = (if (compact) 22 else 25).sp,
+            modifier = Modifier.widthIn(max = 360.dp),
+        )
+    }
+}
+
+@Composable
+private fun AccountContent(
+    state: UiState,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+    onSignInPassword: (String, String, String, String?) -> Unit,
+    onGoogle: () -> Unit,
+    onSignOut: () -> Unit,
+    onSaveProfile: (String) -> Unit,
+    onChangePassword: (String, String, (String?) -> Unit) -> Unit,
+    onDelete: ((String?) -> Unit) -> Unit,
+    onSettingsChanged: (SettingsPatch) -> Unit,
+) {
+    val user = state.account?.user
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        if (user != null) {
+            AccountIdentitySection(state, user, compact)
+            ProfileSection(user, compact, onSaveProfile)
+            AlertsSection(state, compact, onSettingsChanged)
+            SecuritySection(state, user, compact, onSignOut, onChangePassword, onDelete)
+        } else {
+            SignInSection(state, compact, onSignInPassword, onGoogle)
+        }
+    }
+}
+
+@Composable
+private fun AccountSection(
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(if (compact) 22.dp else 28.dp)
+    Column(
+        modifier = modifier
+            .shadow(14.dp, shape, ambientColor = Color(0x240B2645), spotColor = Color(0x240B2645))
+            .clip(shape)
+            .background(SurfacePanel)
+            .drawBehind {
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0x1DFFFFFF), Color.Transparent),
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height),
+                    ),
+                )
+            }
+            .padding(if (compact) 19.dp else 24.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun SectionHeading(title: String, subtitle: String) {
+    Column(Modifier.padding(bottom = 18.dp)) {
+        Text(
+            title,
+            color = TextPrimary,
+            fontFamily = DisplayFamily,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.W700,
+            letterSpacing = (-0.3).sp,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(subtitle, color = TextMuted, fontSize = 13.sp, lineHeight = 19.sp)
+    }
+}
+
+@Composable
+private fun AccountIdentitySection(state: UiState, user: AccountUser, compact: Boolean) {
+    AccountSection(compact) {
+        if (compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                IdentityRow(user)
+                Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
+                SyncStatus(state, compact = true)
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                IdentityRow(user, modifier = Modifier.weight(1f))
+                SyncStatus(state, compact = false)
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdentityRow(user: AccountUser, modifier: Modifier = Modifier) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (user.avatarUrl != null) {
+            AsyncImage(
+                model = user.avatarUrl,
+                contentDescription = null,
+                modifier = Modifier.size(52.dp).clip(CircleShape),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xCC11375B)),
+                contentAlignment = Alignment.Center,
+            ) {
+                LucideIcon(R.drawable.ic_user_round, null, tint = Color.White, size = 22.dp)
+            }
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                user.displayName,
+                color = TextPrimary,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.W600,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                user.email ?: "Google account",
+                color = TextMuted,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncStatus(state: UiState, compact: Boolean) {
+    val updated = state.lastSyncedAt?.let {
+        "Updated " + DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.ofEpochMilli(it))
+    } ?: "Syncing settings..."
+    Column(
+        modifier = if (compact) Modifier.fillMaxWidth() else Modifier,
+        horizontalAlignment = if (compact) Alignment.Start else Alignment.End,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            LucideIcon(R.drawable.ic_check, null, tint = Color(0xFFC7F4D8), size = 15.dp)
+            Text("Cloud sync active", color = Color(0xFFC7F4D8), fontSize = 12.sp)
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(updated, color = TextMuted, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun ProfileSection(user: AccountUser, compact: Boolean, onSaveProfile: (String) -> Unit) {
+    var profileName by remember(user.displayName) { mutableStateOf(user.displayName) }
+    var saving by remember { mutableStateOf(false) }
+    AccountSection(compact) {
+        SectionHeading("Profile", "How your name appears in FireSky.")
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            AccountField(
+                label = "Display name",
+                value = profileName,
+                onValueChange = { profileName = it },
+                placeholder = "Your name",
+            )
+            AccountPillButton(
+                text = if (saving) "Saving..." else "Save profile",
+                onClick = {
+                    saving = true
+                    onSaveProfile(profileName)
+                    saving = false
+                },
+                modifier = if (compact) Modifier.fillMaxWidth() else Modifier,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlertsSection(state: UiState, compact: Boolean, onSettingsChanged: (SettingsPatch) -> Unit) {
+    AccountSection(compact) {
+        SectionHeading("Forecast alerts", "Choose when FireSky should notify you.")
+        ToggleRow(
+            label = "Enable notifications",
+            icon = R.drawable.ic_bell,
+            checked = state.notificationsEnabled,
+            onCheckedChange = { onSettingsChanged(SettingsPatch(notificationsEnabled = it)) },
+        )
+        Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
+        Spacer(Modifier.height(16.dp))
+        if (compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                AccountSelect(
+                    label = "Probability threshold",
+                    valueLabel = "${state.alertThreshold}% or higher",
+                    options = listOf(60 to "60% or higher", 70 to "70% or higher", 80 to "80% or higher"),
+                    onSelect = { onSettingsChanged(SettingsPatch(alertThreshold = it)) },
+                )
+                AccountSelect(
+                    label = "Alert lead time",
+                    valueLabel = when (state.alertLeadMinutes) {
+                        30 -> "30 minutes"
+                        120 -> "2 hours"
+                        else -> "1 hour"
+                    },
+                    options = listOf(30 to "30 minutes", 60 to "1 hour", 120 to "2 hours"),
+                    onSelect = { onSettingsChanged(SettingsPatch(alertLeadMinutes = it)) },
+                )
+                ToggleRow("Sunrise alerts", null, state.sunriseAlerts) {
+                    onSettingsChanged(SettingsPatch(sunriseAlerts = it))
+                }
+                ToggleRow("Sunset alerts", null, state.sunsetAlerts) {
+                    onSettingsChanged(SettingsPatch(sunsetAlerts = it))
+                }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    AccountSelect(
+                        label = "Probability threshold",
+                        valueLabel = "${state.alertThreshold}% or higher",
+                        options = listOf(60 to "60% or higher", 70 to "70% or higher", 80 to "80% or higher"),
+                        onSelect = { onSettingsChanged(SettingsPatch(alertThreshold = it)) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    AccountSelect(
+                        label = "Alert lead time",
+                        valueLabel = when (state.alertLeadMinutes) {
+                            30 -> "30 minutes"
+                            120 -> "2 hours"
+                            else -> "1 hour"
+                        },
+                        options = listOf(30 to "30 minutes", 60 to "1 hour", 120 to "2 hours"),
+                        onSelect = { onSettingsChanged(SettingsPatch(alertLeadMinutes = it)) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ToggleRow("Sunrise alerts", null, state.sunriseAlerts, Modifier.weight(1f)) {
+                        onSettingsChanged(SettingsPatch(sunriseAlerts = it))
+                    }
+                    ToggleRow("Sunset alerts", null, state.sunsetAlerts, Modifier.weight(1f)) {
+                        onSettingsChanged(SettingsPatch(sunsetAlerts = it))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SecuritySection(
+    state: UiState,
+    user: AccountUser,
+    compact: Boolean,
+    onSignOut: () -> Unit,
+    onChangePassword: (String, String, (String?) -> Unit) -> Unit,
+    onDelete: ((String?) -> Unit) -> Unit,
+) {
+    var currentPassword by remember { mutableStateOf("") }
+    var nextPassword by remember { mutableStateOf("") }
+    var notice by remember { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf(false) }
+    AccountSection(compact) {
+        SectionHeading("Sign-in and security", "Manage how you access your account.")
+        if (user.hasPassword) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                AccountField(
+                    label = "Current password",
+                    value = currentPassword,
+                    onValueChange = { currentPassword = it },
+                    placeholder = "",
+                    password = true,
+                )
+                AccountField(
+                    label = "New password",
+                    value = nextPassword,
+                    onValueChange = { nextPassword = it },
+                    placeholder = "",
+                    password = true,
+                    helper = "Use at least 12 characters.",
+                )
+                AccountPillButton(
+                    text = "Update password",
+                    onClick = {
+                        onChangePassword(currentPassword, nextPassword) { error ->
+                            if (error == null) {
+                                currentPassword = ""
+                                nextPassword = ""
+                                notice = "Password updated"
+                            } else {
+                                notice = error
+                            }
+                        }
+                    },
+                    modifier = if (compact) Modifier.fillMaxWidth() else Modifier,
+                )
+            }
+        } else {
+            Text(
+                "You signed in with Google. Password changes are managed by Google.",
+                color = TextMuted,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        if (compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AccountPillButton("Sign out", R.drawable.ic_log_out, onSignOut, Modifier.fillMaxWidth())
+                AccountPillButton(
+                    "Delete account and cloud data",
+                    null,
+                    { confirmDelete = true },
+                    Modifier.fillMaxWidth(),
+                    destructive = true,
+                )
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                AccountPillButton("Sign out", R.drawable.ic_log_out, onSignOut)
+                AccountPillButton("Delete account and cloud data", null, { confirmDelete = true }, destructive = true)
+            }
+        }
+        if (notice.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            AccountNotice(notice, error = false)
+        }
+        if (state.accountError.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            AccountNotice(state.accountError, error = true)
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete FireSky account?") },
+            text = { Text("This removes your cloud-synced locations, viewpoints and feedback. This cannot be undone.") },
+            confirmButton = {
+                Text(
+                    "Delete",
+                    color = Color(0xFFFFD2CF),
+                    modifier = Modifier
+                        .clickable {
+                            confirmDelete = false
+                            onDelete { error -> if (error != null) notice = error }
+                        }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            },
+            dismissButton = {
+                Text(
+                    "Cancel",
+                    modifier = Modifier
+                        .clickable { confirmDelete = false }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            },
+        )
+    }
+}
+
+@Composable
+private fun SignInSection(
+    state: UiState,
+    compact: Boolean,
+    onSignInPassword: (String, String, String, String?) -> Unit,
+    onGoogle: () -> Unit,
+) {
+    var authMode by remember { mutableStateOf("login") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var displayName by remember { mutableStateOf("") }
+    AccountSection(compact, Modifier.widthIn(max = 570.dp)) {
+        AccountPillButton(
+            text = "Continue with Google",
+            icon = R.drawable.ic_log_in,
+            onClick = onGoogle,
+            modifier = Modifier.fillMaxWidth(),
+            google = true,
+        )
+        Spacer(Modifier.height(22.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(Modifier.weight(1f).height(1.dp).background(SurfaceHairline))
+            Text("or use email", color = TextMuted, fontSize = 12.sp)
+            Box(Modifier.weight(1f).height(1.dp).background(SurfaceHairline))
+        }
+        Spacer(Modifier.height(22.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (authMode == "signup") {
+                AccountField(
+                    label = "Display name",
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    placeholder = "",
+                )
+            }
+            AccountField(
+                label = "Email",
+                value = email,
+                onValueChange = { email = it },
+                placeholder = "",
+                keyboardType = KeyboardType.Email,
+            )
+            AccountField(
+                label = "Password",
+                value = password,
+                onValueChange = { password = it },
+                placeholder = "",
+                password = true,
+                helper = if (authMode == "signup") "Use at least 12 characters." else "Enter your FireSky password.",
+            )
+            AccountPillButton(
+                text = when {
+                    state.accountBusy -> "Please wait..."
+                    authMode == "signup" -> "Create account"
+                    else -> "Sign in with email"
+                },
+                onClick = {
+                    onSignInPassword(authMode, email, password, displayName.takeIf { it.isNotBlank() })
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { authMode = if (authMode == "signup") "login" else "signup" }
+                .padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (authMode == "signup") "Already have an account? Sign in" else "New to FireSky? Create an account",
+                color = TextSecondary,
+                fontSize = 13.sp,
+            )
+        }
+        if (state.accountError.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            AccountNotice(state.accountError, error = true)
+        }
+    }
+}
+
+@Composable
+private fun AccountField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    password: Boolean = false,
+    helper: String? = null,
+    keyboardType: KeyboardType = KeyboardType.Text,
+) {
+    Column {
+        Text(label, color = TextSecondary, fontSize = 13.sp)
+        Spacer(Modifier.height(7.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(SurfaceControl)
+                .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(16.dp))
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                textStyle = TextStyle(fontFamily = UiFamily, fontSize = 15.sp, color = TextPrimary),
+                cursorBrush = SolidColor(Color.White),
+                visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                decorationBox = { inner ->
+                    if (value.isEmpty() && placeholder.isNotEmpty()) {
+                        Text(placeholder, color = TextMuted, fontSize = 15.sp, maxLines = 1)
+                    }
+                    inner()
+                },
+            )
+        }
+        if (helper != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(helper, color = TextMuted, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun AccountSelect(
+    label: String,
+    valueLabel: String,
+    options: List<Pair<Int, String>>,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier) {
+        Text(label, color = TextSecondary, fontSize = 13.sp)
+        Spacer(Modifier.height(7.dp))
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(SurfaceControl)
+                    .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(16.dp))
+                    .clickable { expanded = true }
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(valueLabel, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                LucideIcon(R.drawable.ic_chevron_down, null, tint = TextSecondary, size = 16.dp)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.forEach { (value, text) ->
+                    DropdownMenuItem(
+                        text = { Text(text) },
+                        onClick = {
+                            onSelect(value)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToggleRow(
+    label: String,
+    icon: Int?,
+    checked: Boolean,
+    modifier: Modifier = Modifier,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (icon != null) {
+            LucideIcon(icon, null, tint = TextPrimary, size = 17.dp)
+        }
+        Text(
+            label,
+            color = TextPrimary,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.W600,
+            modifier = Modifier.weight(1f),
+        )
+        AccountSwitch(checked)
+    }
+}
+
+@Composable
+private fun AccountSwitch(checked: Boolean) {
+    val knobOffset by animateDpAsState(if (checked) 16.dp else 0.dp, label = "accountSwitch")
+    Box(
+        modifier = Modifier
+            .width(42.dp)
+            .height(26.dp)
+            .clip(CircleShape)
+            .background(if (checked) Color(0xB875BEE8) else Color(0x5708233F))
+            .padding(3.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(
+            Modifier
+                .offset(x = knobOffset)
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(Color(0xE0FFFFFF)),
+        )
+    }
+}
+
+@Composable
+private fun AccountPillButton(
+    text: String,
+    icon: Int? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    destructive: Boolean = false,
+    google: Boolean = false,
+) {
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .clip(CircleShape)
+            .background(
+                when {
+                    destructive -> Color(0x40752834)
+                    google -> Color(0x2EFFFFFF)
+                    else -> SurfaceInset
+                },
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        if (icon != null) {
+            LucideIcon(
+                icon,
+                null,
+                tint = if (destructive) Color(0xFFFFD2CF) else TextPrimary,
+                size = 17.dp,
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(
+            text,
+            color = if (destructive) Color(0xFFFFD2CF) else TextPrimary,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.W600,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun AccountNotice(text: String, error: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (error) Color(0x40752834) else Color(0x381F704A))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text,
+            color = if (error) Color(0xFFFFD2CF) else Color(0xFFC7F4D8),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+        )
+    }
+}
