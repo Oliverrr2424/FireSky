@@ -9,6 +9,7 @@ import {
   Camera,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CloudSun,
   CloudRain,
@@ -36,6 +37,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 import WeatherBackdrop from './WeatherBackdrop.jsx';
+import LiquidGlassSurface from './LiquidGlassSurface.jsx';
 
 // Cache + refresh cadence. Open-Meteo has hourly quotas; we respect them by
 // serving localStorage copies within a 90 minute window and fall back to stale
@@ -2430,7 +2432,7 @@ function ForecastTimeline({ snapshots, mode, timeZone }) {
   );
 }
 
-function AccountPanel({ account, onSignIn, onSignOut, onClose, syncError, settings, onSettingsChange, onDelete, onProfileSave, onPasswordChange, lastSyncedAt }) {
+function AccountPanel({ account, onSignIn, onSignOut, syncError, settings, onSettingsChange, onDelete, onProfileSave, onPasswordChange, lastSyncedAt }) {
   const [authMode, setAuthMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -2457,28 +2459,68 @@ function AccountPanel({ account, onSignIn, onSignOut, onClose, syncError, settin
     try { await onPasswordChange(currentPassword, nextPassword); setCurrentPassword(''); setNextPassword(''); setAccountNotice('Password updated'); } catch (error) { setAccountNotice(error.message); } finally { setPasswordSaving(false); }
   }
   return (
-    <GlassCard className="account-panel">
-      <div className="account-panel-head"><span><UserRound size={17} /> Account & alerts</span><button onClick={onClose} aria-label="Close account panel">×</button></div>
+    <div className={`account-content ${account?.user ? 'has-account' : 'needs-account'}`}>
       {account?.user ? <>
-        <div className="signed-in">{account.user.avatarUrl ? <img src={account.user.avatarUrl} alt="" /> : <span className="account-fallback-avatar"><UserRound size={19} /></span>}<div><strong>{account.user.displayName}</strong><small>{account.user.email || 'Google account'}</small></div><button onClick={onSignOut}><LogOut size={15} /> Sign out</button></div>
-        <form className="profile-settings" onSubmit={saveProfile}>
+        <section className="account-section account-identity">
+          <div className="signed-in">{account.user.avatarUrl ? <img src={account.user.avatarUrl} alt="" /> : <span className="account-fallback-avatar"><UserRound size={22} /></span>}<div><strong>{account.user.displayName}</strong><small>{account.user.email || 'Google account'}</small></div></div>
+          <div className="sync-status"><Check size={15} /><span>Cloud sync active</span><small>{lastSyncedAt ? `Updated ${new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' }).format(lastSyncedAt)}` : 'Syncing settings...'}</small></div>
+        </section>
+
+        <form className="account-section profile-settings" onSubmit={saveProfile}>
+          <div className="account-section-heading"><strong>Profile</strong><span>How your name appears in FireSky.</span></div>
           <label><span>Display name</span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} maxLength="80" required /></label>
-          <div className="sync-status"><Check size={14} /><span>Cloud sync active</span><small>{lastSyncedAt ? `Updated ${new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' }).format(lastSyncedAt)}` : 'Syncing settings…'}</small></div>
-          <button type="submit" disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save profile'}</button>
+          <button type="submit" disabled={profileSaving}>{profileSaving ? 'Saving...' : 'Save profile'}</button>
         </form>
-        <div className="alert-settings">
-          <label className="check-setting full"><input type="checkbox" checked={settings.notificationsEnabled} onChange={(event) => onSettingsChange({ notificationsEnabled: event.target.checked })} /> Enable notifications</label>
-          <label><span>Cloud alert threshold</span><select value={settings.alertThreshold} onChange={(event) => onSettingsChange({ alertThreshold: Number(event.target.value) })}><option value={60}>60% or higher</option><option value={70}>70% or higher</option><option value={80}>80% or higher</option></select></label>
-          <label><span>Alert lead time</span><select value={settings.alertLeadMinutes} onChange={(event) => onSettingsChange({ alertLeadMinutes: Number(event.target.value) })}><option value={30}>30 minutes</option><option value={60}>1 hour</option><option value={120}>2 hours</option></select></label>
-          <label className="check-setting"><input type="checkbox" checked={settings.sunriseAlerts} onChange={(event) => onSettingsChange({ sunriseAlerts: event.target.checked })} /> Sunrise alerts</label>
-          <label className="check-setting"><input type="checkbox" checked={settings.sunsetAlerts} onChange={(event) => onSettingsChange({ sunsetAlerts: event.target.checked })} /> Sunset alerts</label>
-        </div>
-        {account.user.hasPassword ? <form className="password-change" onSubmit={changePassword}><strong>Change password</strong><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Current password" autoComplete="current-password" required /><input type="password" value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} placeholder="New password (12+ characters)" autoComplete="new-password" minLength="12" required /><button type="submit" disabled={passwordSaving}>{passwordSaving ? 'Updating…' : 'Update password'}</button></form> : <p className="account-hint">You use Google sign-in. Password changes are managed by Google.</p>}
-        <div className="account-actions"><button onClick={onSignOut}><LogOut size={15} /> Sign out</button><button className="destructive" onClick={onDelete}>Delete account and cloud data</button></div>
-      </> : <div className="sign-in-prompt"><p>Sign in to sync saved places, camera viewpoints, forecast changes and accuracy feedback across devices.</p><button onClick={() => onSignIn('google')}><LogIn size={16} /> Continue with Google</button><div className="password-divider"><span>or use email</span></div><form className="password-auth" onSubmit={submitPassword}>{authMode === 'signup' ? <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name (optional)" autoComplete="name" /> : null}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" autoComplete="email" required /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password (12+ characters)" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} minLength="12" required /><button type="submit" disabled={submitting}>{submitting ? 'Please wait…' : authMode === 'signup' ? 'Create account' : 'Sign in with email'}</button></form><button className="auth-mode-toggle" onClick={() => setAuthMode((mode) => mode === 'signup' ? 'login' : 'signup')}>{authMode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account'}</button></div>}
+
+        <section className="account-section account-alerts">
+          <div className="account-section-heading"><strong>Forecast alerts</strong><span>Choose when FireSky should notify you.</span></div>
+          <label className="check-setting account-master-toggle"><span><Bell size={17} /> Enable notifications</span><input type="checkbox" checked={settings.notificationsEnabled} onChange={(event) => onSettingsChange({ notificationsEnabled: event.target.checked })} /></label>
+          <div className="alert-settings">
+            <label><span>Probability threshold</span><select value={settings.alertThreshold} onChange={(event) => onSettingsChange({ alertThreshold: Number(event.target.value) })}><option value={60}>60% or higher</option><option value={70}>70% or higher</option><option value={80}>80% or higher</option></select></label>
+            <label><span>Alert lead time</span><select value={settings.alertLeadMinutes} onChange={(event) => onSettingsChange({ alertLeadMinutes: Number(event.target.value) })}><option value={30}>30 minutes</option><option value={60}>1 hour</option><option value={120}>2 hours</option></select></label>
+            <label className="check-setting"><span>Sunrise alerts</span><input type="checkbox" checked={settings.sunriseAlerts} onChange={(event) => onSettingsChange({ sunriseAlerts: event.target.checked })} /></label>
+            <label className="check-setting"><span>Sunset alerts</span><input type="checkbox" checked={settings.sunsetAlerts} onChange={(event) => onSettingsChange({ sunsetAlerts: event.target.checked })} /></label>
+          </div>
+        </section>
+
+        <section className="account-section account-security">
+          <div className="account-section-heading"><strong>Sign-in and security</strong><span>Manage how you access your account.</span></div>
+          {account.user.hasPassword ? <form className="password-change" onSubmit={changePassword}><label><span>Current password</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></label><label><span>New password</span><input type="password" value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} autoComplete="new-password" minLength="12" required /><small>Use at least 12 characters.</small></label><button type="submit" disabled={passwordSaving}>{passwordSaving ? 'Updating...' : 'Update password'}</button></form> : <p className="account-hint">You signed in with Google. Password changes are managed by Google.</p>}
+          <div className="account-actions"><button onClick={onSignOut}><LogOut size={16} /> Sign out</button><button className="destructive" onClick={onDelete}>Delete account and cloud data</button></div>
+        </section>
+      </> : <section className="account-section sign-in-prompt" data-liquid-glass="rect" data-liquid-glass-id="account-card">
+        <button className="google-sign-in" data-liquid-glass="pill" data-liquid-glass-id="google-sign-in" onClick={() => onSignIn('google')}><LogIn size={18} /> Continue with Google</button>
+        <div className="password-divider"><span>or use email</span></div>
+        <form className="password-auth" onSubmit={submitPassword}>
+          {authMode === 'signup' ? <label><span>Display name</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" /></label> : null}
+          <label><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label>
+          <label><span>Password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} minLength="12" required /><small>{authMode === 'signup' ? 'Use at least 12 characters.' : 'Enter your FireSky password.'}</small></label>
+          <button type="submit" data-liquid-glass="pill" data-liquid-glass-id="email-sign-in" disabled={submitting}>{submitting ? 'Please wait...' : authMode === 'signup' ? 'Create account' : 'Sign in with email'}</button>
+        </form>
+        <button className="auth-mode-toggle" onClick={() => setAuthMode((mode) => mode === 'signup' ? 'login' : 'signup')}>{authMode === 'signup' ? 'Already have an account? Sign in' : 'New to FireSky? Create an account'}</button>
+      </section>}
       {accountNotice ? <small className="account-notice">{accountNotice}</small> : null}
       {syncError ? <small className="account-error">{syncError}</small> : null}
-    </GlassCard>
+    </div>
+  );
+}
+
+function AccountPage({ account, onSignIn, onSignOut, onClose, syncError, settings, onSettingsChange, onDelete, onProfileSave, onPasswordChange, lastSyncedAt }) {
+  return (
+    <motion.section className="account-page-shell" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.24, ease: 'easeOut' }}>
+      <LiquidGlassSurface />
+      <header className="account-page-topbar">
+        <button className="account-back" data-liquid-glass="circle" data-liquid-glass-id="account-back" onClick={onClose} aria-label="Back to forecast"><ChevronLeft size={22} /></button>
+        <div className="brand-mark"><SunMedium size={22} /><strong>FireSky Now</strong></div>
+      </header>
+      <div className="account-page-layout">
+        <div className="account-page-intro">
+          <h1>{account?.user ? 'Your FireSky account' : 'Sign in to FireSky'}</h1>
+          <p>{account?.user ? 'Keep your profile, forecast alerts and saved photography plans in sync.' : 'Save locations, camera viewpoints and forecast history across your devices.'}</p>
+        </div>
+        <AccountPanel account={account} onSignIn={onSignIn} onSignOut={onSignOut} syncError={syncError} settings={settings} onSettingsChange={onSettingsChange} onDelete={onDelete} onProfileSave={onProfileSave} onPasswordChange={onPasswordChange} lastSyncedAt={lastSyncedAt} />
+      </div>
+    </motion.section>
   );
 }
 
@@ -3038,7 +3080,23 @@ function App() {
     } catch (error) { setAccountError(error.message); }
   }
 
-  function signOut() { saveAccountToken(''); setAccountToken(''); setAccount(null); setShowAccount(false); }
+  function openAccountPage() {
+    sessionStorage.setItem('firesky:account-view', '1');
+    if (window.location.hash !== '#account') window.history.pushState({ fireskyAccount: true }, '', `${window.location.pathname}${window.location.search}#account`);
+    setShowAccount(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function closeAccountPage() {
+    sessionStorage.removeItem('firesky:account-view');
+    if (window.location.hash === '#account') {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+    setShowAccount(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function signOut() { saveAccountToken(''); setAccountToken(''); setAccount(null); }
 
   function changeCloudSettings(patch) {
     if (Object.hasOwn(patch, 'notificationsEnabled')) setNotificationsEnabled(patch.notificationsEnabled);
@@ -3082,22 +3140,31 @@ function App() {
   return (
     <main className={`weather-${theme} ${isNight ? 'is-night' : 'is-day'}`}>
       <WeatherBackdrop theme={theme} isNight={isNight} />
+      {showAccount ? (
+        <AccountPage
+          key="account"
+          account={account}
+          onSignIn={startSignIn}
+          onSignOut={signOut}
+          onClose={closeAccountPage}
+          syncError={accountError}
+          settings={cloudSettings}
+          onSettingsChange={changeCloudSettings}
+          onDelete={deleteAccount}
+          onProfileSave={saveProfile}
+          onPasswordChange={changePassword}
+          lastSyncedAt={lastSyncedAt}
+        />
+      ) : (
       <section className="app-shell">
         <header className="topbar">
           <div className="brand-mark">
             <SunMedium size={22} />
             <strong>FireSky Now</strong>
           </div>
-          <button className={`account-button ${account?.user ? 'signed-in' : ''}`} onClick={() => setShowAccount((value) => !value)} title="Account and alerts">
+          <button className={`account-button ${account?.user ? 'signed-in' : ''}`} onClick={openAccountPage} title="Account and alerts">
             {account?.user?.avatarUrl ? <img src={account.user.avatarUrl} alt="" /> : <UserRound size={18} />}
           </button>
-          <AnimatePresence>
-            {showAccount ? <motion.div className="account-popover" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <motion.div className="account-panel-motion" initial={{ opacity: 0, x: 6, y: -6, scale: 0.985 }} animate={{ opacity: 1, x: 0, y: 0, scale: 1 }} exit={{ opacity: 0, x: 4, y: -4, scale: 0.985 }} transition={{ duration: 0.18, ease: 'easeOut' }}>
-                <AccountPanel account={account} onSignIn={startSignIn} onSignOut={signOut} onClose={() => setShowAccount(false)} syncError={accountError} settings={cloudSettings} onSettingsChange={changeCloudSettings} onDelete={deleteAccount} onProfileSave={saveProfile} onPasswordChange={changePassword} lastSyncedAt={lastSyncedAt} />
-              </motion.div>
-            </motion.div> : null}
-          </AnimatePresence>
         </header>
 
         <div className="location-row">
@@ -3353,6 +3420,7 @@ function App() {
           <span>Weather and air quality forecast · Today only.</span>
         </footer>
       </section>
+      )}
     </main>
   );
 }
