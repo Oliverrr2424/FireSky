@@ -49,6 +49,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -91,6 +99,8 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.sources.ImageSource
+import kotlin.math.abs
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -191,13 +201,18 @@ private fun HeatMap(
             .textureMode(true)
             .logoEnabled(false)
             .attributionEnabled(false)
+            // Touches never reach the MapView: MapGestureLayer handles taps and
+            // pinches and lets one-finger drags scroll the page.
             .rotateGesturesEnabled(false)
             .tiltGesturesEnabled(false)
             .scrollGesturesEnabled(false)
-            .zoomGesturesEnabled(true)
-            .doubleTapGesturesEnabled(true)
+            .zoomGesturesEnabled(false)
+            .doubleTapGesturesEnabled(false)
             .quickZoomGesturesEnabled(false)
-        MapView(context, options).apply { onCreate(null) }
+        MapView(context, options).apply {
+            onCreate(null)
+            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        }
     }
     var controller by remember { mutableStateOf<HeatMapController?>(null) }
     var mapSettled by remember { mutableStateOf(false) }
@@ -207,8 +222,10 @@ private fun HeatMap(
     var zoomLimits by remember { mutableStateOf(4.0 to 8.75) }
     var selected by remember { mutableStateOf<ScoredPoint?>(null) }
 
+    // null means the grid is still loading; empty means this event has no regional data.
+    val unavailable = samples != null && samples.isEmpty()
     val isReady = mapSettled && heatReady
-    val loadingAlpha by animateFloatAsState(if (isReady) 0f else 1f, tween(260), label = "loadingAlpha")
+    val loadingAlpha by animateFloatAsState(if (isReady || unavailable) 0f else 1f, tween(260), label = "loadingAlpha")
 
     DisposableEffect(lifecycleOwner, mapView) {
         val observer = LifecycleEventObserver { _, event ->
@@ -243,8 +260,8 @@ private fun HeatMap(
             map.uiSettings.isRotateGesturesEnabled = false
             map.uiSettings.isTiltGesturesEnabled = false
             map.uiSettings.isScrollGesturesEnabled = false
-            map.uiSettings.isZoomGesturesEnabled = true
-            map.uiSettings.isDoubleTapGesturesEnabled = true
+            map.uiSettings.isZoomGesturesEnabled = false
+            map.uiSettings.isDoubleTapGesturesEnabled = false
             map.uiSettings.isQuickZoomGesturesEnabled = false
             map.setMaxZoomPreference(8.75)
 
@@ -273,10 +290,6 @@ private fun HeatMap(
                 zoomLevel = map.cameraPosition.zoom
                 next.updateLabels()
             }
-            map.addOnMapClickListener { latLng ->
-                next.selectNearest(latLng)
-                true
-            }
             map.setStyle(Style.Builder().fromUri(MAP_STYLE_URL)) { style ->
                 next.attachStyle(style)
             }
@@ -297,6 +310,16 @@ private fun HeatMap(
             modifier = Modifier.fillMaxSize(),
             factory = { mapView },
             update = { /* MapView owns its own render loop. */ },
+        )
+
+        MapGestureLayer(
+            controller = controller,
+            description = if (type == "probability") {
+                "Regional map of color chance. Tap an area to see its value; pinch to zoom."
+            } else {
+                "Regional map of color intensity. Tap an area to see its value; pinch to zoom."
+            },
+            modifier = Modifier.fillMaxSize(),
         )
 
         if (isReady) {
@@ -331,12 +354,17 @@ private fun HeatMap(
             )
         }
 
-        if (isReady && !compact) {
+        if (isReady) {
             MapLegend(
+                compact = compact,
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(12.dp),
+                    .align(if (compact) Alignment.TopEnd else Alignment.BottomStart)
+                    .padding(if (compact) 6.dp else 12.dp),
             )
+        }
+
+        if (unavailable) {
+            MapUnavailableNotice(Modifier.fillMaxSize())
         }
 
         if (selected != null) {
@@ -379,7 +407,8 @@ private fun MapLabels(labels: List<MapLabel>, compact: Boolean) {
     labels.forEach { label ->
         Row(
             modifier = Modifier
-                .offset { IntOffset(label.x.roundToInt(), label.y.roundToInt()) }
+                // Labels are measured in dp; offset {} positions in pixels.
+                .offset { IntOffset(label.x.dp.roundToPx(), label.y.dp.roundToPx()) }
                 .graphicsLayer {
                     translationX = -size.width / 2f
                     translationY = -size.height / 2f
@@ -450,22 +479,92 @@ private fun ZoomButton(label: String, enabled: Boolean, onClick: () -> Unit) {
 private fun Modifier.androidClickable(onClick: () -> Unit): Modifier =
     this.then(Modifier.clickable(onClick = onClick))
 
+/**
+ * Sits over the MapView and owns its gestures: tap selects the nearest sample,
+ * double tap and pinch zoom, and one-finger drags are left unconsumed so the
+ * page scrolls instead of getting stuck on the map.
+ */
 @Composable
-private fun MapLegend(modifier: Modifier = Modifier) {
+private fun MapGestureLayer(
+    controller: HeatMapController?,
+    description: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .semantics { contentDescription = description }
+            .pointerInput(controller) {
+                detectTapGestures(
+                    onTap = { offset -> controller?.selectAt(offset.x, offset.y) },
+                    onDoubleTap = { controller?.zoomIn() },
+                )
+            }
+            .pointerInput(controller) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val pressed = event.changes.count { it.pressed }
+                        if (pressed >= 2) {
+                            val zoom = event.calculateZoom()
+                            if (zoom != 1f && zoom > 0f) {
+                                val centroid = event.calculateCentroid(useCurrent = true)
+                                controller?.zoomBy(ln(zoom.toDouble()) / ln(2.0), centroid.x, centroid.y)
+                            }
+                            event.changes.forEach { it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
+    )
+}
+
+@Composable
+private fun MapUnavailableNotice(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(Color(0x99102036)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 20.dp),
+        ) {
+            Text(
+                "No regional map for this event",
+                color = TextPrimary,
+                fontFamily = DisplayFamily,
+                fontSize = 14.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.W700,
+            )
+            Text(
+                "The regional cloud map covers today and tomorrow. Local scores below still apply.",
+                color = TextSecondary,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MapLegend(compact: Boolean, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(SurfacePanel)
             .border(1.dp, SurfaceHairline, RoundedCornerShape(10.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = if (compact) 5.dp else 8.dp)
+            .semantics { contentDescription = "Color scale from 1 percent in blue to 100 percent in red" },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 9.dp),
     ) {
-        Text("1%", color = TextPrimary, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.W700)
+        Text("1%", color = TextPrimary, fontSize = (if (compact) 10 else 11).sp, fontWeight = androidx.compose.ui.text.font.FontWeight.W700)
         Box(
             Modifier
-                .width(150.dp)
-                .height(8.dp)
+                .width(if (compact) 64.dp else 150.dp)
+                .height(if (compact) 6.dp else 8.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.horizontalGradient(
@@ -480,7 +579,7 @@ private fun MapLegend(modifier: Modifier = Modifier) {
                     ),
                 ),
         )
-        Text("100%", color = TextPrimary, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.W700)
+        Text("100%", color = TextPrimary, fontSize = (if (compact) 10 else 11).sp, fontWeight = androidx.compose.ui.text.font.FontWeight.W700)
     }
 }
 
@@ -655,6 +754,7 @@ private class HeatMapController(
             settleJob?.cancel()
             onSettled()
         }
+        updateLabels()
         renderHeat(fast = true)
     }
 
@@ -664,6 +764,15 @@ private class HeatMapController(
 
     fun zoomOut() {
         map.animateCamera(CameraUpdateFactory.zoomOut(), 220)
+    }
+
+    fun zoomBy(delta: Double, focusX: Float, focusY: Float) {
+        map.moveCamera(CameraUpdateFactory.zoomBy(delta, android.graphics.Point(focusX.toInt(), focusY.toInt())))
+    }
+
+    /** Selects the sample nearest a tap given in MapView pixels. */
+    fun selectAt(x: Float, y: Float) {
+        selectNearest(map.projection.fromScreenLocation(PointF(x, y)))
     }
 
     fun selectNearest(latLng: LatLng) {
@@ -681,27 +790,35 @@ private class HeatMapController(
             onLabels(emptyList())
             return
         }
+        // Only label samples comfortably inside the frame, so pills are never cut off.
+        val widthDp = mapView.width / density
+        val heightDp = mapView.height / density
+        val insetX = 34f
+        val insetY = 18f
         val ranked = samples
             .filter { val value = valueOf(it); !value.isNaN() }
-            .sortedByDescending { valueOf(it) }
+            .map { sample ->
+                val point = map.projection.toScreenLocation(LatLng(sample.latitude, sample.longitude))
+                MapLabel(point.x / density, point.y / density, valueOf(sample))
+            }
+            .filter { it.x in insetX..(widthDp - insetX) && it.y in insetY..(heightDp - insetY) }
+            .sortedByDescending { it.value }
         if (ranked.isEmpty()) {
             onLabels(emptyList())
             return
         }
-        val indexes = listOf(0.16, 0.5, 0.84).map { ratio ->
-            min(ranked.size - 1, (Math.round((ranked.size - 1) * ratio).toInt()))
+        // High, middle and low readings, skipping any that would overlap a pill already placed.
+        val picked = mutableListOf<MapLabel>()
+        listOf(0.0, 0.5, 1.0).forEach { ratio ->
+            val start = min(ranked.size - 1, Math.round((ranked.size - 1) * ratio).toInt())
+            val order = (start downTo 0).asSequence() + (start + 1 until ranked.size).asSequence()
+            order.map { ranked[it] }
+                .firstOrNull { candidate ->
+                    picked.none { abs(it.x - candidate.x) < 56f && abs(it.y - candidate.y) < 26f }
+                }
+                ?.let { picked.add(it) }
         }
-        val picked = mutableListOf<ScoredPoint>()
-        indexes.forEach { index ->
-            val candidate = ranked[index]
-            if (picked.none { it.sampleId == candidate.sampleId }) picked.add(candidate)
-        }
-        onLabels(
-            picked.take(3).map { sample ->
-                val point = map.projection.toScreenLocation(LatLng(sample.latitude, sample.longitude))
-                MapLabel(point.x / density, point.y / density, valueOf(sample))
-            },
-        )
+        onLabels(picked)
     }
 
     private fun valueOf(sample: ScoredPoint): Double =
