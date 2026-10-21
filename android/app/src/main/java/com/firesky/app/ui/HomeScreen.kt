@@ -59,6 +59,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -101,7 +102,6 @@ import coil.compose.AsyncImage
 import com.firesky.app.FireSkyViewModel
 import com.firesky.app.R
 import com.firesky.app.UiState
-import com.firesky.app.data.PRESET_PLACES
 import com.firesky.app.data.Place
 import com.firesky.app.ui.map.ChaseMapScreen
 import com.firesky.app.ui.map.HeatMapCard
@@ -136,6 +136,17 @@ private fun FireSkyAppContent(
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: "home"
+    DisposableEffect(currentRoute, state.onboardingCompleted, context) {
+        val window = context.findActivity()?.window
+        window?.let {
+            androidx.core.view.WindowCompat.getInsetsController(it, it.decorView).apply {
+                isAppearanceLightStatusBars = state.onboardingCompleted && currentRoute == "map"
+                isAppearanceLightNavigationBars = state.onboardingCompleted
+            }
+        }
+        onDispose { }
+    }
+
 
     var locationBusy by remember { mutableStateOf(false) }
     var locationGranted by remember { mutableStateOf(LocationHelper.hasPermission(context)) }
@@ -474,10 +485,10 @@ private fun FireSkyBottomNavBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xD90E2038))
+            .background(Color.White)
             .drawBehind {
                 drawLine(
-                    color = SurfaceHairline,
+                    color = Color(0xFFE9EBEE),
                     start = Offset(0f, 0f),
                     end = Offset(size.width, 0f),
                     strokeWidth = 1f,
@@ -554,7 +565,7 @@ private fun BottomNavItem(
                 .height(28.dp)
                 .width(52.dp)
                 .clip(CircleShape)
-                .background(if (selected) Color(0x3DFFD76A) else Color.Transparent),
+                .background(if (selected) Color(0xFFF0F1F3) else Color.Transparent),
             contentAlignment = Alignment.Center,
         ) {
             if (route == "account" && avatarUrl != null) {
@@ -568,14 +579,14 @@ private fun BottomNavItem(
                 Icon(
                     painter = painterResource(iconRes),
                     contentDescription = label,
-                    tint = if (selected) Color(0xFFFFD76A) else TextSecondary,
+                    tint = if (selected) Color(0xFF20262D) else Color(0xFF777D85),
                     modifier = Modifier.size(18.dp),
                 )
             }
         }
         Text(
             text = label,
-            color = if (selected) Color.White else TextSecondary,
+            color = if (selected) Color(0xFF20262D) else Color(0xFF777D85),
             fontFamily = UiFamily,
             fontSize = 11.sp,
             fontWeight = if (selected) FontWeight.W700 else FontWeight.W500,
@@ -894,7 +905,6 @@ private fun LocationHeaderAndControls(
             Spacer(Modifier.height(8.dp))
             SearchPanel(
                 state = state,
-                compact = compact,
                 onQuery = onSearchQuery,
                 onSubmit = onSearchSubmit,
                 onSelect = onSelectPlace,
@@ -1076,17 +1086,10 @@ private fun SavedPlacesBar(
 @Composable
 private fun SearchPanel(
     state: UiState,
-    compact: Boolean,
     onQuery: (String) -> Unit,
     onSubmit: () -> Unit,
     onSelect: (Place) -> Unit,
 ) {
-    val unifiedCities = remember(state.favorites) {
-        val favs = state.favorites
-        val presetsWithoutDupes = PRESET_PLACES.filter { preset -> favs.none { it.sameSpot(preset) } }
-        favs.map { it to true } + presetsWithoutDupes.map { it to false }
-    }
-
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -1097,8 +1100,6 @@ private fun SearchPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 44.dp)
-                .clip(CircleShape)
-                .background(SurfaceControl)
                 .padding(start = 14.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1180,37 +1181,6 @@ private fun SearchPanel(
             }
         }
 
-        // 3. Unified Saved + Popular City Chips (no duplicate cities!)
-        Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            unifiedCities.forEach { (city, isSaved) ->
-                val selected = city.sameSpot(state.place)
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(if (selected) Color(0x4DFFFFFF) else SurfaceControl)
-                        .border(1.dp, if (selected) Color(0x88FFD76A) else SurfaceHairline, CircleShape)
-                        .clickable { onSelect(city) }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    if (isSaved) {
-                        LucideIcon(R.drawable.ic_star, null, tint = Color(0xFFFFD76A), size = 11.dp)
-                    }
-                    Text(
-                        text = city.name,
-                        color = if (selected) Color.White else TextSecondary,
-                        fontSize = if (compact) 12.sp else 13.sp,
-                        fontWeight = if (selected) FontWeight.W700 else FontWeight.W500,
-                    )
-                }
-            }
-        }
     }
 }
 

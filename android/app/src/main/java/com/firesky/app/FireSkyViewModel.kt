@@ -101,6 +101,7 @@ data class UiState(
     val accountError: String = "",
     val viewpoints: List<Viewpoint> = emptyList(),
     val forecastSnapshots: List<ForecastSnapshot> = emptyList(),
+    val forecastHistoryLabel: String = "",
     val feedbackStore: JSONObject = JSONObject(),
     val lastSyncedAt: Long? = null,
     val feedbackEditing: Boolean = false,
@@ -194,7 +195,6 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
     private var pendingAlertEvent: Pair<String, Long>? = null
 
     private var foreground = true
-    private var snapshotFingerprint = ""
     private var settingsSyncJob: Job? = null
     private var syncJob: Job? = null
     private var searchJob: Job? = null
@@ -560,83 +560,38 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         return next.dayIndex to next.mode
     }
 
-    /** Records the selected event's score in the forecast-change history and loads that history. */
+    /** Loads shared regional history; local point scores are never appended to it. */
     private fun recordSelectedEvent() {
         val current = _state.value
         val outlook = current.selectedOutlook ?: return
-        // History is only meaningful for events the regional model can score.
-        if (current.selectedDayIndex > 1) {
-            _state.update { it.copy(forecastSnapshots = emptyList()) }
-            return
-        }
-        persistSnapshot(outlook, current.activeMode)
         loadForecastHistory(outlook, current.activeMode)
     }
 
-    private fun persistSnapshot(forecast: Forecast, mode: String) {
-        val score = forecast.scores[mode]
-        val event = forecast[mode]
-        val place = displayedPlace ?: return
-        val calculatedAt = (System.currentTimeMillis() / (15L * 60L * 1000L)) * 15L * 60L * 1000L
-        val snapshot = ForecastSnapshot(
-            mode = mode,
-            eventAt = event.toEpochMilli(),
-            latitude = String.format(Locale.US, "%.4f", place.latitude).toDouble(),
-            longitude = String.format(Locale.US, "%.4f", place.longitude).toDouble(),
-            calculatedAt = calculatedAt,
-            probability = score.probability,
-            quality = score.quality,
-            modelVersion = forecast.ml?.modelVersion ?: "rules",
-        )
-        val fingerprint = "${snapshot.mode}:${snapshot.eventAt}:${snapshot.latitude}:${snapshot.longitude}:${snapshot.calculatedAt}:${Math.round(snapshot.probability)}"
-        if (snapshotFingerprint == fingerprint) return
-        snapshotFingerprint = fingerprint
-        persistLocalSnapshot(snapshot)
-        val token = _state.value.accountToken
-        if (token.isNotBlank()) {
-            viewModelScope.launch { runCatching { api.postSnapshot(token, snapshot) } }
-        }
-    }
-
-    private fun persistLocalSnapshot(snapshot: ForecastSnapshot) {
-        val storeJson = store.snapshots
-        val key = snapshotKey(snapshot.mode, snapshot.eventAt, snapshot.latitude, snapshot.longitude)
-        val previous = storeJson.optJSONArray(key)?.let { array ->
-            List(array.length()) { index -> ForecastSnapshot.fromJson(array.getJSONObject(index)) }
-        } ?: emptyList()
-        val cutoff = System.currentTimeMillis() - SNAPSHOT_RETENTION_MS
-        val next = (previous.filter { it.calculatedAt >= cutoff && it.calculatedAt != snapshot.calculatedAt } + snapshot)
-            .sortedBy { it.calculatedAt }
-            .takeLast(96)
-        val array = JSONArray()
-        next.forEach { array.put(it.toJson()) }
-        storeJson.put(key, array)
-        // Drop whole histories for events that are long past, so the store doesn't grow forever.
-        storeJson.keys().asSequence().toList().forEach { existing ->
-            val eventAt = existing.split(':').getOrNull(1)?.toLongOrNull()
-            if (eventAt == null || eventAt < cutoff) storeJson.remove(existing)
-        }
-        store.snapshots = storeJson
-    }
-
-    private fun snapshotKey(mode: String, eventAt: Long, latitude: Double, longitude: Double): String =
-        "$mode:$eventAt:${String.format(Locale.US, "%.4f", latitude).toDouble()}:${String.format(Locale.US, "%.4f", longitude).toDouble()}"
+    private var historyRequestId = 0L
 
     private fun loadForecastHistory(outlook: Forecast, mode: String) {
         val place = displayedPlace ?: return
-        val eventAt = outlook[mode].toEpochMilli()
-        val key = snapshotKey(mode, eventAt, place.latitude, place.longitude)
-        val local = store.snapshots.optJSONArray(key)?.let { array ->
-            List(array.length()) { index -> ForecastSnapshot.fromJson(array.getJSONObject(index)) }
-        } ?: emptyList()
-        _state.update { it.copy(forecastSnapshots = local) }
-        val token = _state.value.accountToken
-        if (token.isBlank()) return
+        val requestId = ++historyRequestId
+        val date = outlook[mode].atZone(java.time.ZoneId.of(outlook.timeZone)).toLocalDate().toString()
+        _state.update { it.copy(forecastSnapshots = emptyList(), forecastHistoryLabel = "Loading regional trend…") }
         viewModelScope.launch {
-            runCatching { api.fetchForecastHistory(token, eventAt, mode) }
-                .onSuccess { snapshots ->
-                    val stillSelected = _state.value.selectedOutlook?.get(_state.value.activeMode)?.toEpochMilli() == eventAt
-                    if (snapshots.isNotEmpty() && stillSelected) _state.update { it.copy(forecastSnapshots = snapshots) }
+            runCatching { api.fetchRegionalHistory(place, date, mode) }
+                .onSuccess { result ->
+                    if (requestId != historyRequestId || displayedPlace != place || _state.value.activeMode != mode || _state.value.selectedOutlook?.get(mode) != outlook[mode]) return@onSuccess
+                    val region = result.optJSONObject("region")
+                    val array = result.optJSONArray("snapshots") ?: JSONArray()
+                    val snapshots = List(array.length()) { ForecastSnapshot.fromJson(array.getJSONObject(it)) }
+                    val label = when (result.optString("status")) {
+                        "outside_coverage" -> "Regional history is not yet available here"
+                        "collecting" -> "${region?.optString("name")}: collecting regional history · every 3 hours"
+                        "stale" -> "${region?.optString("name")}: regional trend · update delayed"
+                        else -> "${region?.optString("name")} area · ${region?.optInt("distanceKm")} km from sample · every 3 hours"
+                    }
+                    _state.update { it.copy(forecastSnapshots = snapshots, forecastHistoryLabel = label) }
+                }.onFailure {
+                    if (requestId == historyRequestId) _state.update {
+                        it.copy(forecastSnapshots = emptyList(), forecastHistoryLabel = "Regional history temporarily unavailable")
+                    }
                 }
         }
     }
@@ -1130,7 +1085,6 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
     private companion object {
         const val REFRESH_INTERVAL_MS = 90L * 60L * 1000L
         const val STALE_ON_RESUME_MS = 30L * 60L * 1000L
-        const val SNAPSHOT_RETENTION_MS = 10L * 86_400_000L
 
         fun randomUrlSafe(bytes: Int): String {
             val buffer = ByteArray(bytes).also { SecureRandom().nextBytes(it) }

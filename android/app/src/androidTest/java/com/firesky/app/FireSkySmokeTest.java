@@ -8,6 +8,9 @@ import static org.hamcrest.Matchers.containsString;
 
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.lifecycle.ViewModelProvider;
+import com.firesky.app.data.Store;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -16,10 +19,33 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public class FireSkySmokeTest {
     @Test
+    public void languageChangesAndRecreationKeepActivityOwnersAvailable() {
+        Store store = new Store(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        String originalLanguage = store.getLanguageTag();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            for (String tag : new String[] {"en", "zh-Hans", "fr-CA", "es-MX", "system"}) {
+                scenario.onActivity(activity ->
+                    new ViewModelProvider(activity).get(FireSkyViewModel.class).setLanguageTag(tag));
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+                assertComposeContentVisible();
+                // Also cover starting with a persisted explicit language.
+                scenario.recreate();
+                assertComposeContentVisible();
+            }
+        } finally {
+            store.setLanguageTag(originalLanguage);
+        }
+    }
+
+    @Test
     public void launchesWithVisibleComposeContent() {
         try (ActivityScenario<MainActivity> ignored = ActivityScenario.launch(MainActivity.class)) {
-            onView(withClassName(containsString("androidx.compose.ui.platform.ComposeView")))
-                .check(matches(isDisplayed()));
+            assertComposeContentVisible();
         }
+    }
+
+    private void assertComposeContentVisible() {
+        onView(withClassName(containsString("androidx.compose.ui.platform.ComposeView")))
+            .check(matches(isDisplayed()));
     }
 }

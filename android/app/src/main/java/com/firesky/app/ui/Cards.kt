@@ -240,14 +240,7 @@ fun ForecastStrip(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        "${Math.round(score)}%",
-                        color = Color.White,
-                        fontFamily = DisplayFamily,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.W700,
-                        lineHeight = 18.sp,
-                    )
+                    MiniScoreGauge(score, Modifier.width(68.dp).height(44.dp))
                     Text(
                         if (index == 0) stringResource(R.string.label_forecast) else stringResource(R.string.label_weather),
                         color = TextSecondary,
@@ -633,45 +626,46 @@ fun FactorBars(factors: Factors) {
         stringResource(R.string.factor_visibility) to factors.visibility,
     )
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items.forEach { (label, value) ->
-            Column {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(label, color = TextSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    Text(
-                        "${Math.round(value)}",
-                        color = Color.White,
-                        fontFamily = DisplayFamily,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.W700,
-                    )
-                }
-                Spacer(Modifier.height(5.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(7.dp)
-                        .clip(CircleShape)
-                        .background(SurfaceControl),
-                ) {
-                    val fraction = (value.coerceIn(0.0, 100.0) / 100.0).toFloat()
-                    Box(
-                        Modifier
-                            .fillMaxWidth(fraction)
-                            .height(7.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color(0xFF246097),
-                                        Color(0xFF3A9CB8),
-                                        Color(0xFF6CB881),
-                                        Color(0xFFF4CF49),
-                                        Color(0xFFED703E),
-                                        Color(0xFFC23646),
+        items.chunked(2).forEach { pair ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                pair.forEach { (label, value) ->
+                    Column(Modifier.weight(1f)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(label, color = TextSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text(
+                                "${Math.round(value)}",
+                                color = Color.White,
+                                fontFamily = DisplayFamily,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.W700,
+                            )
+                        }
+                        Spacer(Modifier.height(5.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(7.dp)
+                                .clip(CircleShape)
+                                .background(SurfaceControl),
+                        ) {
+                            val fraction = (value.coerceIn(0.0, 100.0) / 100.0).toFloat()
+                            androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(7.dp)) {
+                                // The spectrum spans the full track; only its visible extent changes.
+                                drawRoundRect(
+                                    brush = Brush.horizontalGradient(
+                                        colors = listOf(
+                                            Color(0xFF246097), Color(0xFF3A9CB8),
+                                            Color(0xFF6CB881), Color(0xFFF4CF49),
+                                            Color(0xFFED703E), Color(0xFFC23646),
+                                        ),
+                                        endX = size.width,
                                     ),
-                                ),
-                            ),
-                    )
+                                    size = Size(size.width * fraction, size.height),
+                                    cornerRadius = CornerRadius(size.height / 2f),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -689,6 +683,10 @@ fun TimelineCard(
     val sunBearing = state.sunBearing
     val rainRisk = activeWindow.precipProbability ?: 0.0
     GlassCard(shape = RoundedCornerShape(22.dp), contentPadding = PaddingValues(18.dp)) {
+        if (state.forecastHistoryLabel.isNotBlank()) {
+            Text(state.forecastHistoryLabel, color = TextSecondary, fontSize = 11.sp)
+            Spacer(Modifier.height(8.dp))
+        }
         ForecastTimeline(state.forecastSnapshots, state.activeMode, outlook.timeZone)
 
         Column(
@@ -843,7 +841,7 @@ fun ForecastTimeline(snapshots: List<ForecastSnapshot>, mode: String, timeZone: 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LucideIcon(R.drawable.ic_clock_3, null, tint = TextSecondary, size = 16.dp)
             Text(
-                "Forecast changes",
+                "Regional forecast changes",
                 color = Color.White,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.W700,
@@ -890,7 +888,7 @@ fun ForecastTimeline(snapshots: List<ForecastSnapshot>, mode: String, timeZone: 
                         fontWeight = FontWeight.W700,
                     )
                     Text(
-                        formatTime(java.time.Instant.ofEpochMilli(snapshot.calculatedAt), timeZone),
+                        java.time.format.DateTimeFormatter.ofPattern("M/d HH:mm").withZone(java.time.ZoneId.of(timeZone)).format(java.time.Instant.ofEpochMilli(snapshot.calculatedAt)),
                         color = TextMuted,
                         fontSize = 11.sp,
                     )
@@ -899,7 +897,7 @@ fun ForecastTimeline(snapshots: List<ForecastSnapshot>, mode: String, timeZone: 
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            "Each point is a new model run using forecast conditions near the target $mode, not weather at the calculation time.",
+            "Each point is a scheduled regional estimate for the selected $mode. Times show when the forecast was sampled.",
             color = TextMuted,
             fontSize = 12.sp,
             lineHeight = 16.sp,

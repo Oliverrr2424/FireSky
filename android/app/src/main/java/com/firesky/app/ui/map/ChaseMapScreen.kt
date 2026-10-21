@@ -2,6 +2,7 @@ package com.firesky.app.ui.map
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +29,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -41,6 +44,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -76,12 +81,6 @@ import com.firesky.app.data.formatDistanceKm
 import com.firesky.app.ui.LucideIcon
 import com.firesky.app.ui.localizedScoreLabel
 import com.firesky.app.ui.theme.DisplayFamily
-import com.firesky.app.ui.theme.SurfaceControl
-import com.firesky.app.ui.theme.SurfaceHairline
-import com.firesky.app.ui.theme.SurfaceInset
-import com.firesky.app.ui.theme.TextMuted
-import com.firesky.app.ui.theme.TextPrimary
-import com.firesky.app.ui.theme.TextSecondary
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -239,10 +238,6 @@ fun ChaseMapScreen(
             factory = { mapView },
         )
 
-        Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(110.dp).background(
-            Brush.verticalGradient(listOf(Color(0x990D1A2C), Color.Transparent)),
-        ))
-
         // Selected chase pin marker on screen
         val pin = pinScreenPos
         if (pin != null && state.chaseSpot != null) {
@@ -260,57 +255,44 @@ fun ChaseMapScreen(
             }
         }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
+        Row(
+            Modifier.align(Alignment.TopCenter)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .widthIn(max = 520.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(ChasePanel)
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .widthIn(max = 520.dp).fillMaxWidth()
+                .shadow(4.dp, RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(16.dp)).background(ChasePanel)
+                .padding(start = 16.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        stringResource(R.string.chase_map_title), color = ChaseMuted,
-                        fontSize = 11.sp, fontWeight = FontWeight.W600, letterSpacing = 1.2.sp,
-                    )
-                    Text(
-                        state.place.name, color = Color.White, fontFamily = DisplayFamily,
-                        fontSize = 23.sp, fontWeight = FontWeight.W600, lineHeight = 27.sp,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                val centerLabel = stringResource(R.string.chase_center_map)
-                Box(
-                    Modifier.size(48.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.09f))
-                        .semantics { contentDescription = centerLabel }
-                        .clickable(role = Role.Button) { controller?.center() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    LucideIcon(R.drawable.ic_locate_fixed, null, tint = Color.White, size = 21.dp)
-                }
-            }
-            ChaseSegments(
+            Text(stringResource(R.string.chase_map_title), modifier = Modifier.weight(1f),
+                color = ChaseInk, fontSize = 15.sp, fontWeight = FontWeight.W700,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            ChaseFilter(
                 choices = listOf("sunrise" to stringResource(R.string.mode_sunrise), "sunset" to stringResource(R.string.mode_sunset)),
                 selected = state.activeMode, onSelect = onSelectMode,
             )
-            ChaseSegments(
-                choices = listOf("probability" to stringResource(R.string.label_probability), "quality" to stringResource(R.string.label_intensity)),
-                selected = mapType, onSelect = { mapType = it }, subtle = true,
+            ChaseFilter(
+                choices = listOf("probability" to stringResource(R.string.chase_probability), "quality" to stringResource(R.string.chase_intensity)),
+                selected = mapType, onSelect = { mapType = it },
             )
         }
 
         Column(
-            Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
+            Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ChaseZoomBtn("+", stringResource(R.string.chase_zoom_in), samples.isNotEmpty() && zoomLevel < maximumZoom - 0.02) { controller?.zoomBy(1.0) }
-            ChaseZoomBtn("−", stringResource(R.string.chase_zoom_out), samples.isNotEmpty() && zoomLevel > minimumZoom + 0.02) { controller?.zoomBy(-1.0) }
+            val centerLabel = stringResource(R.string.chase_center_map)
+            Box(Modifier.size(44.dp).shadow(3.dp, CircleShape).clip(CircleShape).background(ChasePanel)
+                .semantics { contentDescription = centerLabel }
+                .clickable(role = Role.Button) { controller?.center() }, contentAlignment = Alignment.Center) {
+                LucideIcon(R.drawable.ic_locate_fixed, null, tint = ChaseInk, size = 20.dp)
+            }
+            Column(Modifier.shadow(3.dp, RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)).background(ChasePanel)) {
+                ChaseZoomBtn("+", stringResource(R.string.chase_zoom_in), samples.isNotEmpty() && zoomLevel < maximumZoom - 0.02) { controller?.zoomBy(1.0) }
+                Box(Modifier.width(24.dp).height(1.dp).align(Alignment.CenterHorizontally).background(ChaseLine))
+                ChaseZoomBtn("−", stringResource(R.string.chase_zoom_out), samples.isNotEmpty() && zoomLevel > minimumZoom + 0.02) { controller?.zoomBy(-1.0) }
+            }
         }
 
         if (state.chaseSpot == null) {
@@ -318,23 +300,20 @@ fun ChaseMapScreen(
                 Modifier.align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .padding(16.dp).widthIn(max = 520.dp).fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
-                    Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(ChasePanel).padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    Modifier.weight(1f).height(64.dp).clip(CircleShape).background(ChasePanel).padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
                 ) {
-                    Text(stringResource(R.string.chase_nearby_area), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.W500)
+                    Text(stringResource(if (heatReady) R.string.chase_nearby_area else if (state.grid?.isEmpty() == true) R.string.chase_unavailable else R.string.chase_loading), maxLines = 1, overflow = TextOverflow.Ellipsis, color = ChaseInk, fontSize = 11.sp, fontWeight = FontWeight.W500)
                     Box(Modifier.width(112.dp).height(5.dp).clip(CircleShape).background(Brush.horizontalGradient(listOf(
                         Color(0xFF246097), Color(0xFF6CB881), Color(0xFFF4CF49), Color(0xFFC23646),
                     ))))
-                    if (!heatReady) {
-                        Text(stringResource(if (state.grid?.isEmpty() == true) R.string.chase_unavailable else R.string.chase_loading), color = ChaseMuted, fontSize = 11.sp)
-                    }
                 }
                 bestSample?.let { best ->
                     Row(
-                        Modifier.heightIn(min = 48.dp).clip(CircleShape).background(Color(0xFFFFF6DF))
+                        Modifier.height(64.dp).clip(CircleShape).background(ChasePanel)
                             .clickable(role = Role.Button) {
                                 controller?.moveTo(best.latitude, best.longitude, 8.1)
                                 inspectPoint(best.latitude, best.longitude)
@@ -357,7 +336,6 @@ fun ChaseMapScreen(
             ChaseSpotBottomCard(
                 spot = spot,
                 origin = state.place,
-                mode = state.activeMode,
                 distanceUnit = state.unitPrefs.distanceUnit,
                 onNavigate = {
                     val uri = Uri.parse(
@@ -397,26 +375,27 @@ fun ChaseMapScreen(
     }
 }
 
-private val ChasePanel = Color(0xFF0D1A2C)
-private val ChaseMuted = Color(0xFFB2C1D1)
+private val ChasePanel = Color.White
+private val ChaseInk = Color(0xFF20262D)
+private val ChaseMuted = Color(0xFF6E747C)
+private val ChaseLine = Color(0xFFE9EBEE)
+private val ChaseInset = Color(0xFFF4F5F6)
 
 @Composable
-private fun ChaseSegments(choices: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit, subtle: Boolean = false) {
-    Row(
-        Modifier.fillMaxWidth().clip(CircleShape).background(Color.White.copy(alpha = 0.07f)).padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        choices.forEach { (key, label) ->
-            val active = selected == key
-            Box(
-                Modifier.weight(1f).heightIn(min = 48.dp).clip(CircleShape)
-                    .background(if (active) { if (subtle) Color(0xFF34465B) else Color.White } else Color.Transparent)
-                    .clickable(role = Role.Button) { onSelect(key) }.padding(horizontal = 8.dp, vertical = 10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(label, color = if (active && !subtle) Color(0xFF142236) else if (active) Color.White else ChaseMuted,
-                    fontSize = 12.sp, fontWeight = if (active) FontWeight.W700 else FontWeight.W500,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2)
+private fun ChaseFilter(choices: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Row(Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button) { expanded = true }.padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(choices.firstOrNull { it.first == selected }?.second.orEmpty(), color = ChaseInk,
+                fontSize = 12.sp, fontWeight = FontWeight.W500, maxLines = 1)
+            LucideIcon(R.drawable.ic_chevron_down, null, tint = ChaseMuted, size = 12.dp)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = ChasePanel) {
+            choices.forEach { (key, label) ->
+                DropdownMenuItem(text = { Text(label, color = ChaseInk, fontWeight = if (key == selected) FontWeight.W700 else FontWeight.W400) },
+                    onClick = { onSelect(key); expanded = false })
             }
         }
     }
@@ -424,14 +403,9 @@ private fun ChaseSegments(choices: List<Pair<String, String>>, selected: String,
 
 @Composable
 private fun ChaseZoomBtn(label: String, description: String, enabled: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(ChasePanel)
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-            .semantics { contentDescription = description }
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, color = if (enabled) Color.White else Color(0xFF5A6C81), fontFamily = DisplayFamily, fontSize = 24.sp)
+    Box(Modifier.size(44.dp).semantics { contentDescription = description }
+        .clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+        Text(label, color = if (enabled) ChaseInk else Color(0xFFBBC0C5), fontSize = 23.sp)
     }
 }
 
@@ -439,174 +413,82 @@ private fun ChaseZoomBtn(label: String, description: String, enabled: Boolean, o
 private fun ChaseSpotBottomCard(
     spot: ChaseSpotState,
     origin: Place,
-    mode: String,
     distanceUnit: String,
     onNavigate: () -> Unit,
     onUseAsPlace: () -> Unit,
     onSaveViewpoint: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var expanded by remember { mutableStateOf(false) }
     val distKm = distanceKm(origin.latitude, origin.longitude, spot.latitude, spot.longitude)
     val bearing = bearingDegrees(origin.latitude, origin.longitude, spot.latitude, spot.longitude)
     val distText = formatDistanceKm(distKm, distanceUnit)
-    val dirText = compassLabel(bearing)
+    val detailsLabel = stringResource(if (expanded) R.string.chase_less_details else R.string.chase_more_details)
 
-    Column(
-        modifier.clip(RoundedCornerShape(24.dp)).background(ChasePanel)
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp)).padding(16.dp),
-    ) {
-        Text(stringResource(R.string.chase_regional_estimate), color = ChaseMuted, fontSize = 11.sp)
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(Modifier.weight(1f)) {
+    Column(modifier.shadow(6.dp, RoundedCornerShape(18.dp)).clip(RoundedCornerShape(18.dp))
+        .background(ChasePanel).padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .semantics { contentDescription = detailsLabel }
+            .clickable(role = Role.Button) { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    LucideIcon(R.drawable.ic_map_pin, null, tint = Color(0xFFFFD76A), size = 14.dp)
-                    Text(
-                        text = spot.placeName,
-                        color = Color.White,
-                        fontFamily = DisplayFamily,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.W700,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (spot.loading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(13.dp),
-                            strokeWidth = 1.8.dp,
-                            color = Color(0xFFFFD76A),
-                        )
-                    }
+                    Text(spot.placeName, modifier = Modifier.weight(1f, fill = false), color = ChaseInk,
+                        fontSize = 15.sp, fontWeight = FontWeight.W600, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (spot.loading) CircularProgressIndicator(Modifier.size(12.dp), color = ChaseInk, strokeWidth = 1.5.dp)
                 }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.chase_distance_away, distText, dirText) +
-                        String.format(Locale.US, " · %.3f°, %.3f°", spot.latitude, spot.longitude),
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                )
+                Text(stringResource(R.string.chase_distance_away, distText, compassLabel(bearing)),
+                    color = ChaseMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "${Math.round(spot.probability)}%",
-                    color = Color(0xFFFFD76A),
-                    fontFamily = DisplayFamily,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.W700,
-                    lineHeight = 26.sp,
-                )
-                Text(
-                    text = localizedScoreLabel(spot.probability),
-                    color = TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.W600,
-                )
+                Text("${Math.round(spot.probability)}%", color = ChaseInk,
+                    fontFamily = DisplayFamily, fontSize = 23.sp, fontWeight = FontWeight.W700)
+                Text(localizedScoreLabel(spot.probability), color = ChaseMuted, fontSize = 10.sp)
+            }
+            LucideIcon(R.drawable.ic_chevron_down, null, tint = ChaseMuted, size = 16.dp,
+                modifier = Modifier.rotate(if (expanded) 180f else 0f))
+        }
+        AnimatedVisibility(expanded) {
+            Column(Modifier.padding(top = 10.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.chase_regional_estimate) + String.format(Locale.US, " · %.3f°, %.3f°", spot.latitude, spot.longitude),
+                    color = ChaseMuted, fontSize = 10.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    SpotMiniStat(stringResource(R.string.label_intensity), "${Math.round(spot.quality)}%", Modifier.weight(1f))
+                    SpotMiniStat(stringResource(R.string.label_peak_window), spot.peakWindowLabel, Modifier.weight(1.3f))
+                    SpotMiniStat(stringResource(R.string.sun_direction_title), "${Math.round(spot.sunBearing)}° ${compassLabel(spot.sunBearing)}", Modifier.weight(1.1f))
+                }
             }
         }
-
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            SpotMiniStat(
-                label = stringResource(R.string.label_intensity),
-                value = "${Math.round(spot.quality)}%",
-                modifier = Modifier.weight(1f),
-            )
-            SpotMiniStat(
-                label = stringResource(R.string.label_peak_window),
-                value = spot.peakWindowLabel,
-                modifier = Modifier.weight(1.3f),
-            )
-            SpotMiniStat(
-                label = stringResource(R.string.sun_direction_title),
-                value = "${Math.round(spot.sunBearing)}° ${compassLabel(spot.sunBearing)}",
-                modifier = Modifier.weight(1.1f),
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .weight(1.25f)
-                    .heightIn(min = 48.dp)
-                    .clip(CircleShape)
-                    .background(Color.White)
-                    .clickable(role = Role.Button, onClick = onNavigate)
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                LucideIcon(R.drawable.ic_compass, null, tint = Color(0xFF101D33), size = 16.dp)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = stringResource(R.string.chase_navigate),
-                    color = Color(0xFF101D33),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.W700,
-                    maxLines = 1,
-                )
-            }
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 44.dp)
-                    .clip(CircleShape)
-                    .background(SurfaceInset)
-                    .border(1.dp, SurfaceHairline, CircleShape)
-                    .clickable(role = Role.Button, onClick = onUseAsPlace)
-                    .padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                LucideIcon(R.drawable.ic_sun_medium, null, tint = TextPrimary, size = 15.dp)
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    text = stringResource(R.string.chase_set_place),
-                    color = TextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.W600,
-                    maxLines = 1,
-                )
-            }
-            Row(
-                modifier = Modifier
-                    .heightIn(min = 44.dp)
-                    .clip(CircleShape)
-                    .background(SurfaceControl)
-                    .border(1.dp, SurfaceHairline, CircleShape)
-                    .clickable(role = Role.Button, onClick = onSaveViewpoint)
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                LucideIcon(R.drawable.ic_camera, null, tint = TextPrimary, size = 15.dp)
+        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            SpotAction(R.drawable.ic_compass, stringResource(R.string.chase_navigate), onNavigate, Modifier.weight(1f), primary = true)
+            SpotAction(R.drawable.ic_sun_medium, stringResource(R.string.chase_set_place), onUseAsPlace, Modifier.weight(1f))
+            val saveLabel = stringResource(R.string.chase_save_spot)
+            Box(Modifier.size(44.dp).clip(CircleShape).background(ChaseInset)
+                .semantics { contentDescription = saveLabel }
+                .clickable(role = Role.Button, onClick = onSaveViewpoint), contentAlignment = Alignment.Center) {
+                LucideIcon(R.drawable.ic_camera, null, tint = ChaseInk, size = 18.dp)
             }
         }
     }
 }
 
 @Composable
+private fun SpotAction(icon: Int, label: String, onClick: () -> Unit, modifier: Modifier, primary: Boolean = false) {
+    Row(modifier.heightIn(min = 44.dp).clip(CircleShape).background(if (primary) ChaseInk else ChaseInset)
+        .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        LucideIcon(icon, null, tint = if (primary) Color.White else ChaseInk, size = 15.dp)
+        Spacer(Modifier.width(5.dp))
+        Text(label, color = if (primary) Color.White else ChaseInk, fontSize = 11.sp,
+            fontWeight = FontWeight.W600, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
 private fun SpotMiniStat(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceInset)
-            .padding(horizontal = 9.dp, vertical = 7.dp),
-    ) {
-        Text(label, color = TextMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(2.dp))
-        Text(
-            value,
-            color = Color.White,
-            fontFamily = DisplayFamily,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.W700,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+    Column(modifier.clip(RoundedCornerShape(10.dp)).background(ChaseInset).padding(horizontal = 8.dp, vertical = 7.dp)) {
+        Text(label, color = ChaseMuted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(3.dp))
+        Text(value, color = ChaseInk, fontSize = 12.sp, fontWeight = FontWeight.W600, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

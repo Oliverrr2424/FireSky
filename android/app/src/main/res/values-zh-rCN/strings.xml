@@ -143,4 +143,8 @@
     <string name="chase_zoom_out">缩小地图</string>
     <string name="chase_loading">正在加载周边预报…</string>
     <string name="chase_unavailable">本场暂无周边预报</string>
+    <string name="chase_probability">概率</string>
+    <string name="chase_intensity">强度</string>
+    <string name="chase_more_details">展开地点详情</string>
+    <string name="chase_less_details">收起地点详情</string>
 </resources>

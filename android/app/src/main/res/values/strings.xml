@@ -143,4 +143,8 @@
     <string name="chase_zoom_out">Zoom out</string>
     <string name="chase_loading">Loading nearby skies…</string>
     <string name="chase_unavailable">No regional forecast for this event</string>
+    <string name="chase_probability">Probability</string>
+    <string name="chase_intensity">Intensity</string>
+    <string name="chase_more_details">Show spot details</string>
+    <string name="chase_less_details">Hide spot details</string>
 </resources>

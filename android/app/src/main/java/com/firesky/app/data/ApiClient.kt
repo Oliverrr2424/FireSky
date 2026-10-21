@@ -401,6 +401,16 @@ class ApiClient(private val store: Store) {
         accountRequest("/api/feedback", token, "POST", body)
     }
 
+    suspend fun fetchRegionalHistory(place: Place, date: String, mode: String): JSONObject {
+        val path = "/api/regional-history?lat=${place.latitude}&lon=${place.longitude}&date=$date&mode=$mode"
+        val key = "regional-history:v1:$path"
+        store.cacheRead(key, 5L * 60L * 1000L)?.let { return JSONObject(it) }
+        val raw = requestRaw("$baseUrl$path", "regional history", REQUEST_TIMEOUT_MS)
+        val result = JSONObject(raw)
+        store.cacheWrite(key, raw)
+        return result
+    }
+
     suspend fun fetchForecastHistory(token: String, eventAt: Long, mode: String): List<ForecastSnapshot> {
         val payload = accountRequest("/api/forecast-history?eventAt=$eventAt&mode=$mode", token)
         val array = payload.optJSONArray("snapshots") ?: return emptyList()

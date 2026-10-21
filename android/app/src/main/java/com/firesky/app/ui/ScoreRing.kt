@@ -230,3 +230,34 @@ fun ScoreRing(
         }
     }
 }
+
+/** Compact, static score gauge for the horizontally scrolling daily outlook. */
+@Composable
+fun MiniScoreGauge(value: Double, modifier: Modifier = Modifier) {
+    val score = clamp(value).toFloat()
+    androidx.compose.foundation.layout.Box(
+        modifier.clearAndSetSemantics { contentDescription = "${score.roundToInt()} percent" },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 4.dp.toPx()
+            val diameter = min(size.width - stroke * 2, (size.height - stroke) * 2)
+            val topLeft = Offset((size.width - diameter) / 2, stroke)
+            val arcSize = Size(diameter, diameter)
+            val style = Stroke(stroke, cap = StrokeCap.Round)
+            drawArc(Color(0x661E293B), 180f, 180f, false, topLeft, arcSize, style = style)
+            if (score > 0f) {
+                drawArc(
+                    Brush.horizontalGradient(
+                        listOf(Color(0xFF4C1D95), Color(0xFFE11D48), Color(0xFFF97316), Color(0xFFFACC15)),
+                        startX = topLeft.x, endX = topLeft.x + diameter,
+                    ),
+                    180f, 180f * score / 100f, false, topLeft, arcSize, style = style,
+                )
+            }
+        }
+        Text("${score.roundToInt()}%", color = Color.White, fontFamily = DisplayFamily,
+            fontSize = 15.sp, lineHeight = 17.sp, fontWeight = FontWeight.W600,
+            modifier = Modifier.offset(y = (-2).dp))
+    }
+}

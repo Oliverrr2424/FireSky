@@ -143,4 +143,8 @@
     <string name="chase_zoom_out">Réduire la carte</string>
     <string name="chase_loading">Chargement du ciel à proximité…</string>
     <string name="chase_unavailable">Aucune prévision régionale pour cet événement</string>
+    <string name="chase_probability">Probabilité</string>
+    <string name="chase_intensity">Intensité</string>
+    <string name="chase_more_details">Afficher les détails</string>
+    <string name="chase_less_details">Masquer les détails</string>
 </resources>
