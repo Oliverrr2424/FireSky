@@ -2,6 +2,7 @@ package com.firesky.app.ui
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlarmManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -113,11 +114,19 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     var locationBusy by remember { mutableStateOf(false) }
     var notificationsAllowed by remember { mutableStateOf(areNotificationsAllowed(context)) }
+    var exactAlarmsAllowed by remember { mutableStateOf(canScheduleExactAlarms(context)) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         notificationsAllowed = areNotificationsAllowed(context)
+        exactAlarmsAllowed = canScheduleExactAlarms(context)
     }
     // The stored preference only counts as "on" when Android will actually show the alert.
     val notificationsActive = state.notificationsEnabled && notificationsAllowed
+    // Without "Alarms & reminders" access Android may deliver an alert up to an hour late.
+    val onAllowExactAlarms: (() -> Unit)? = if (notificationsActive && !exactAlarmsAllowed) {
+        { runCatching { context.startActivity(exactAlarmSettingsIntent(context)) } }
+    } else {
+        null
+    }
 
     BackHandler(enabled = state.showAccount) { viewModel.setAccountVisible(false) }
     BackHandler(enabled = !state.showAccount && state.showSearch) { viewModel.setSearchVisible(false) }
@@ -171,11 +180,23 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
         }
     }
 
+    fun promptExactAlarmsIfNeeded() {
+        exactAlarmsAllowed = canScheduleExactAlarms(context)
+        if (!exactAlarmsAllowed) {
+            showMessage(
+                "Alerts may arrive up to an hour late. Allow on-time alerts in Alarms & reminders.",
+                exactAlarmSettingsIntent(context),
+            )
+        }
+    }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         notificationsAllowed = areNotificationsAllowed(context)
-        if (!granted) {
+        if (granted) {
+            promptExactAlarmsIfNeeded()
+        } else {
             showMessage(
                 if (canAskAgain(context, Manifest.permission.POST_NOTIFICATIONS)) {
                     "Notifications are off, so FireSky can't send sky alerts."
@@ -204,7 +225,10 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
         }
         if (!state.notificationsEnabled) viewModel.toggleNotifications()
         notificationsAllowed = areNotificationsAllowed(context)
-        if (notificationsAllowed) return
+        if (notificationsAllowed) {
+            promptExactAlarmsIfNeeded()
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -238,7 +262,8 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
                 onOpenNotificationSettings = {
                     runCatching { context.startActivity(notificationSettingsIntent(context)) }
                 },
-                onClose = { viewModel.setAccountVisible(false) },
+                onAllowExactAlarms = onAllowExactAlarms,
+                onClose ={ viewModel.setAccountVisible(false) },
                 onSignInPassword = { action, email, password, name ->
                     viewModel.signInWithPassword(action, email, password, name)
                 },
@@ -269,6 +294,7 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
                 state = state,
                 locationBusy = locationBusy,
                 notificationsActive = notificationsActive,
+                onAllowExactAlarms = onAllowExactAlarms,
                 onToggleSearch = { viewModel.setSearchVisible(!state.showSearch) },
                 onSelectPlace = { viewModel.selectPlace(it) },
                 onSelectMode = { viewModel.selectMode(it) },
@@ -329,6 +355,14 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 private fun appDetailsSettingsIntent(context: Context): Intent =
     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
 
+private fun canScheduleExactAlarms(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+        context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() != false
+
+/** Only used on Android 12+, where [canScheduleExactAlarms] can be false. */
+private fun exactAlarmSettingsIntent(context: Context): Intent =
+    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + context.packageName))
+
 private fun notificationSettingsIntent(context: Context): Intent =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
@@ -341,6 +375,7 @@ private fun HomeContent(
     state: UiState,
     locationBusy: Boolean,
     notificationsActive: Boolean,
+    onAllowExactAlarms: (() -> Unit)?,
     onToggleSearch: () -> Unit,
     onSelectPlace: (Place) -> Unit,
     onSelectMode: (String) -> Unit,
@@ -527,6 +562,7 @@ private fun HomeContent(
                         onToggleReaction = onToggleReaction,
                         onEditing = onFeedbackEditing,
                         onAlertLead = onAlertLead,
+                        onAllowExactAlarms = onAllowExactAlarms,
                     )
                 }
 

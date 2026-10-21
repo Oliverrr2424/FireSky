@@ -911,6 +911,7 @@ fun FeedbackCard(
     onToggleReaction: (String) -> Unit,
     onEditing: (Boolean) -> Unit,
     onAlertLead: (Int) -> Unit,
+    onAllowExactAlarms: (() -> Unit)? = null,
 ) {
     val day = state.sunsetDay ?: "--"
     val feedback = state.sunsetFeedback
@@ -1037,6 +1038,10 @@ fun FeedbackCard(
                     onSelect = onAlertLead,
                 )
             }
+            if (onAllowExactAlarms != null) {
+                Spacer(Modifier.height(6.dp))
+                ExactAlarmNotice(onAllowExactAlarms)
+            }
             Spacer(Modifier.height(14.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
             Spacer(Modifier.height(14.dp))
@@ -1055,6 +1060,18 @@ fun FeedbackCard(
             }
         }
     }
+}
+
+/** Shown while alerts are on but Android has not granted "Alarms & reminders" access. */
+@Composable
+fun ExactAlarmNotice(onAllow: () -> Unit, modifier: Modifier = Modifier) {
+    InlineNotice(
+        iconRes = R.drawable.ic_clock_3,
+        text = "Alerts may arrive up to an hour late.",
+        actionLabel = "Allow on-time alerts",
+        onAction = onAllow,
+        modifier = modifier,
+    )
 }
 
 @Composable

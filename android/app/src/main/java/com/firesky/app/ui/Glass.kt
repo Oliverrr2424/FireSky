@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -315,6 +316,41 @@ fun NoticeCard(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             LucideIcon(iconRes, null, tint = if (warning) Color(0xFFFACC15) else TextPrimary, size = 18.dp)
             LabelText(text, color = TextPrimary, size = 13, maxLines = 3)
+        }
+    }
+}
+
+/** A tinted inline message with one text action, for problems the user can fix in system settings. */
+@Composable
+fun InlineNotice(
+    iconRes: Int,
+    text: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    warning: Boolean = false,
+) {
+    val tint = if (warning) Color(0xFFFFD2CF) else TextPrimary
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (warning) Color(0x40752834) else SurfaceInset)
+            .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        LucideIcon(iconRes, null, tint = tint, size = 16.dp)
+        Text(
+            text,
+            color = tint,
+            fontFamily = UiFamily,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+        )
+        TextButton(onClick = onAction) {
+            Text(actionLabel, color = Color(0xFFFFD76A), fontFamily = UiFamily, fontSize = 13.sp, fontWeight = FontWeight.W600)
         }
     }
 }

@@ -113,6 +113,7 @@ fun AccountPage(
     notificationsActive: Boolean,
     notificationsBlocked: Boolean,
     onOpenNotificationSettings: () -> Unit,
+    onAllowExactAlarms: (() -> Unit)?,
     onClose: () -> Unit,
     onSignInPassword: (String, String, String, String?) -> Unit,
     onGoogle: () -> Unit,
@@ -154,6 +155,7 @@ fun AccountPage(
                         notificationsActive = notificationsActive,
                         notificationsBlocked = notificationsBlocked,
                         onOpenNotificationSettings = onOpenNotificationSettings,
+                        onAllowExactAlarms = onAllowExactAlarms,
                         onSignInPassword = onSignInPassword,
                         onGoogle = onGoogle,
                         onSignOut = onSignOut,
@@ -176,6 +178,7 @@ fun AccountPage(
                             notificationsActive = notificationsActive,
                             notificationsBlocked = notificationsBlocked,
                             onOpenNotificationSettings = onOpenNotificationSettings,
+                            onAllowExactAlarms = onAllowExactAlarms,
                             onSignInPassword = onSignInPassword,
                             onGoogle = onGoogle,
                             onSignOut = onSignOut,
@@ -275,6 +278,7 @@ private fun AccountContent(
     notificationsActive: Boolean,
     notificationsBlocked: Boolean,
     onOpenNotificationSettings: () -> Unit,
+    onAllowExactAlarms: (() -> Unit)?,
     onSignInPassword: (String, String, String, String?) -> Unit,
     onGoogle: () -> Unit,
     onSignOut: () -> Unit,
@@ -291,7 +295,15 @@ private fun AccountContent(
         if (user != null) {
             AccountIdentitySection(state, user, compact)
             ProfileSection(state, user, compact, onSaveProfile)
-            AlertsSection(state, compact, notificationsActive, notificationsBlocked, onOpenNotificationSettings, onSettingsChanged)
+            AlertsSection(
+                state,
+                compact,
+                notificationsActive,
+                notificationsBlocked,
+                onOpenNotificationSettings,
+                onAllowExactAlarms,
+                onSettingsChanged,
+            )
             SecuritySection(state, user, compact, onSignOut, onChangePassword, onDelete)
         } else {
             SignInSection(state, compact, onSignInPassword, onGoogle)
@@ -452,6 +464,7 @@ private fun AlertsSection(
     notificationsActive: Boolean,
     notificationsBlocked: Boolean,
     onOpenNotificationSettings: () -> Unit,
+    onAllowExactAlarms: (() -> Unit)?,
     onSettingsChanged: (SettingsPatch) -> Unit,
 ) {
     AccountSection(compact) {
@@ -464,27 +477,16 @@ private fun AlertsSection(
         )
         if (notificationsBlocked) {
             Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0x40752834))
-                    .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                LucideIcon(R.drawable.ic_bell_off, null, tint = ErrorText, size = 16.dp)
-                Text(
-                    "Android is blocking FireSky notifications, so alerts can't appear.",
-                    color = ErrorText,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    modifier = Modifier.weight(1f).padding(vertical = 8.dp),
-                )
-                TextButton(onClick = onOpenNotificationSettings) {
-                    Text("Open settings", color = Color(0xFFFFD76A), fontSize = 13.sp, fontWeight = FontWeight.W600)
-                }
-            }
+            InlineNotice(
+                iconRes = R.drawable.ic_bell_off,
+                text = "Android is blocking FireSky notifications, so alerts can't appear.",
+                actionLabel = "Open settings",
+                onAction = onOpenNotificationSettings,
+                warning = true,
+            )
+        } else if (onAllowExactAlarms != null) {
+            Spacer(Modifier.height(8.dp))
+            ExactAlarmNotice(onAllowExactAlarms)
         }
         Spacer(Modifier.height(8.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
