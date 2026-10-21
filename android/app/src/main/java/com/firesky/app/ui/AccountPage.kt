@@ -84,6 +84,10 @@ import com.firesky.app.ui.theme.TextMuted
 import com.firesky.app.ui.theme.TextPrimary
 import com.firesky.app.ui.theme.TextSecondary
 import com.firesky.app.ui.theme.UiFamily
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.res.stringResource
+import com.firesky.app.data.Place
+import com.firesky.app.data.formatMinutesOfDay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -95,6 +99,16 @@ data class SettingsPatch(
     val alertLeadMinutes: Int? = null,
     val sunriseAlerts: Boolean? = null,
     val sunsetAlerts: Boolean? = null,
+    val forecastImprovedAlerts: Boolean? = null,
+    val postEventFeedbackAlerts: Boolean? = null,
+    val quietHoursEnabled: Boolean? = null,
+    val quietHoursRange: Pair<Int, Int>? = null,
+    val togglePlaceAlert: Place? = null,
+    val temperatureUnit: String? = null,
+    val distanceUnit: String? = null,
+    val timeFormat: String? = null,
+    val languageTag: String? = null,
+    val replayOnboarding: Boolean = false,
 )
 
 /** Same rule the server applies in functions/_shared/account.js normalEmail. */
@@ -140,15 +154,12 @@ fun AccountPage(
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
                     .padding(
                         horizontal = if (compact) 14.dp else 32.dp,
-                        vertical = if (compact) 14.dp else 32.dp,
+                        vertical = if (compact) 16.dp else 32.dp,
                     ),
             ) {
-                AccountTopBar(compact = compact, onClose = onClose)
-                Spacer(Modifier.height(if (compact) 22.dp else 56.dp))
-
                 if (compact) {
                     AccountIntro(signedIn = state.account?.user != null, compact = true)
-                    Spacer(Modifier.height(22.dp))
+                    Spacer(Modifier.height(18.dp))
                     AccountContent(
                         state = state,
                         compact = true,
@@ -247,15 +258,15 @@ private fun AccountTopBar(compact: Boolean, onClose: () -> Unit) {
 private fun AccountIntro(signedIn: Boolean, compact: Boolean, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(
-            text = if (signedIn) "Your FireSky account" else "Sign in to FireSky",
+            text = if (signedIn) stringResource(R.string.account_title_signed_in) else stringResource(R.string.account_title_guest),
             color = Color.White,
             fontFamily = DisplayFamily,
-            fontSize = (if (compact) 34 else 48).sp,
+            fontSize = (if (compact) 30 else 44).sp,
             fontWeight = FontWeight.W700,
-            lineHeight = (if (compact) 35 else 49).sp,
-            letterSpacing = (-1.5).sp,
+            lineHeight = (if (compact) 33 else 46).sp,
+            letterSpacing = (-1.2).sp,
         )
-        Spacer(Modifier.height(if (compact) 10.dp else 18.dp))
+        Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
         Text(
             text = if (signedIn) {
                 "Keep your profile, forecast alerts and saved photography plans in sync."
@@ -264,7 +275,7 @@ private fun AccountIntro(signedIn: Boolean, compact: Boolean, modifier: Modifier
             },
             color = TextSecondary,
             fontSize = (if (compact) 14 else 16).sp,
-            lineHeight = (if (compact) 22 else 25).sp,
+            lineHeight = (if (compact) 21 else 24).sp,
             modifier = Modifier.widthIn(max = 360.dp),
         )
     }
@@ -295,18 +306,21 @@ private fun AccountContent(
         if (user != null) {
             AccountIdentitySection(state, user, compact)
             ProfileSection(state, user, compact, onSaveProfile)
-            AlertsSection(
-                state,
-                compact,
-                notificationsActive,
-                notificationsBlocked,
-                onOpenNotificationSettings,
-                onAllowExactAlarms,
-                onSettingsChanged,
-            )
-            SecuritySection(state, user, compact, onSignOut, onChangePassword, onDelete)
         } else {
             SignInSection(state, compact, onSignInPassword, onGoogle)
+        }
+        AlertsSection(
+            state,
+            compact,
+            notificationsActive,
+            notificationsBlocked,
+            onOpenNotificationSettings,
+            onAllowExactAlarms,
+            onSettingsChanged,
+        )
+        UnitsAndLanguageSection(state, compact, onSettingsChanged)
+        if (user != null) {
+            SecuritySection(state, user, compact, onSignOut, onChangePassword, onDelete)
         }
     }
 }
@@ -548,6 +562,166 @@ private fun AlertsSection(
                 }
             }
         }
+
+        Spacer(Modifier.height(14.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
+        Spacer(Modifier.height(14.dp))
+
+        // Alerts v2: Forecast improved, Post-event feedback, Quiet hours, and Per-place toggles
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            ToggleRow(
+                label = stringResource(R.string.alerts_v2_improved_label),
+                icon = R.drawable.ic_sparkles,
+                checked = state.forecastImprovedAlerts,
+                onCheckedChange = { onSettingsChanged(SettingsPatch(forecastImprovedAlerts = it)) },
+            )
+            Text(stringResource(R.string.alerts_v2_improved_desc), color = TextMuted, fontSize = 12.sp)
+
+            Spacer(Modifier.height(4.dp))
+            ToggleRow(
+                label = stringResource(R.string.alerts_v2_feedback_label),
+                icon = R.drawable.ic_thumbs_up,
+                checked = state.postEventFeedbackAlerts,
+                onCheckedChange = { onSettingsChanged(SettingsPatch(postEventFeedbackAlerts = it)) },
+            )
+            Text(stringResource(R.string.alerts_v2_feedback_desc), color = TextMuted, fontSize = 12.sp)
+
+            Spacer(Modifier.height(4.dp))
+            ToggleRow(
+                label = stringResource(R.string.alerts_v2_quiet_label),
+                icon = R.drawable.ic_moon_star,
+                checked = state.quietHoursEnabled,
+                onCheckedChange = { onSettingsChanged(SettingsPatch(quietHoursEnabled = it)) },
+            )
+            if (state.quietHoursEnabled) {
+                Text(
+                    text = stringResource(
+                        R.string.alerts_v2_quiet_range,
+                        formatMinutesOfDay(state.quietHoursStart),
+                        formatMinutesOfDay(state.quietHoursEnd),
+                    ),
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf(
+                        (22 * 60 to 7 * 60) to "22:00 – 07:00",
+                        (23 * 60 to 6 * 60 + 30) to "23:00 – 06:30",
+                        (21 * 60 to 8 * 60) to "21:00 – 08:00",
+                    ).forEach { (range, label) ->
+                        val active = state.quietHoursStart == range.first && state.quietHoursEnd == range.second
+                        Pill(
+                            text = label,
+                            selected = active,
+                            onClick = { onSettingsChanged(SettingsPatch(quietHoursRange = range)) },
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
+        Spacer(Modifier.height(14.dp))
+
+        Text(
+            text = stringResource(R.string.alerts_v2_places_title),
+            color = TextPrimary,
+            fontFamily = DisplayFamily,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.W700,
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = stringResource(R.string.alerts_v2_places_subtitle),
+            color = TextMuted,
+            fontSize = 12.sp,
+        )
+        Spacer(Modifier.height(8.dp))
+        val allPlaces = remember(state.place, state.favorites) {
+            buildList {
+                add(state.place)
+                state.favorites.forEach { fav ->
+                    if (none { it.sameSpot(fav) }) add(fav)
+                }
+            }
+        }
+        allPlaces.forEach { placeItem ->
+            val enabled = placeItem.spotKey() !in state.disabledAlertPlaceKeys
+            val isPrimary = placeItem.sameSpot(state.place)
+            ToggleRow(
+                label = if (isPrimary) "${placeItem.name} (Primary)" else placeItem.name,
+                icon = R.drawable.ic_map_pin,
+                checked = enabled,
+                onCheckedChange = { onSettingsChanged(SettingsPatch(togglePlaceAlert = placeItem)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun UnitsAndLanguageSection(
+    state: UiState,
+    compact: Boolean,
+    onSettingsChanged: (SettingsPatch) -> Unit,
+) {
+    val prefs = state.unitPrefs
+    AccountSection(compact) {
+        SectionHeading(
+            title = stringResource(R.string.units_section_title),
+            subtitle = stringResource(R.string.units_section_subtitle),
+        )
+        UnitSegmentRow(
+            label = stringResource(R.string.unit_temperature),
+            options = listOf("C" to "°C Celsius", "F" to "°F Fahrenheit"),
+            selected = prefs.temperatureUnit,
+            onSelect = { onSettingsChanged(SettingsPatch(temperatureUnit = it)) },
+        )
+        Spacer(Modifier.height(12.dp))
+        UnitSegmentRow(
+            label = stringResource(R.string.unit_distance),
+            options = listOf("km" to "km (Metric)", "mi" to "mi (Imperial)"),
+            selected = prefs.distanceUnit,
+            onSelect = { onSettingsChanged(SettingsPatch(distanceUnit = it)) },
+        )
+        Spacer(Modifier.height(12.dp))
+        UnitSegmentRow(
+            label = stringResource(R.string.unit_clock),
+            options = listOf("system" to "Auto", "24h" to "24-hour", "12h" to "12-hour"),
+            selected = prefs.timeFormat,
+            onSelect = { onSettingsChanged(SettingsPatch(timeFormat = it)) },
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(stringResource(R.string.unit_language), color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.W600)
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(
+                "system" to "System",
+                "en" to "English",
+                "zh-Hans" to "简体中文",
+                "fr-CA" to "Français (CA)",
+                "es-MX" to "Español (MX)",
+            ).forEach { (tag, label) ->
+                Pill(
+                    text = label,
+                    selected = prefs.languageTag == tag,
+                    onClick = { onSettingsChanged(SettingsPatch(languageTag = tag)) },
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        AccountPillButton(
+            text = stringResource(R.string.replay_onboarding),
+            icon = R.drawable.ic_sparkles,
+            onClick = { onSettingsChanged(SettingsPatch(replayOnboarding = true)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

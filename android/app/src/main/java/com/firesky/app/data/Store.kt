@@ -141,6 +141,66 @@ class Store(context: Context) {
         get() = prefs.getInt(KEY_THRESHOLD, 70)
         set(value) = prefs.edit().putInt(KEY_THRESHOLD, value).apply()
 
+    var forecastImprovedAlerts: Boolean
+        get() = prefs.getBoolean(KEY_IMPROVED_ALERTS, true)
+        set(value) = prefs.edit().putBoolean(KEY_IMPROVED_ALERTS, value).apply()
+
+    var postEventFeedbackAlerts: Boolean
+        get() = prefs.getBoolean(KEY_FEEDBACK_ALERTS, true)
+        set(value) = prefs.edit().putBoolean(KEY_FEEDBACK_ALERTS, value).apply()
+
+    var quietHoursEnabled: Boolean
+        get() = prefs.getBoolean(KEY_QUIET_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_QUIET_ENABLED, value).apply()
+
+    var quietHoursStart: Int
+        get() = prefs.getInt(KEY_QUIET_START, 22 * 60)
+        set(value) = prefs.edit().putInt(KEY_QUIET_START, value).apply()
+
+    var quietHoursEnd: Int
+        get() = prefs.getInt(KEY_QUIET_END, 7 * 60)
+        set(value) = prefs.edit().putInt(KEY_QUIET_END, value).apply()
+
+    var disabledAlertPlaceKeys: Set<String>
+        get() = prefs.getStringSet(KEY_DISABLED_ALERT_PLACES, emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet(KEY_DISABLED_ALERT_PLACES, value).apply()
+
+    var onboardingCompleted: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false)
+        set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETED, value).apply()
+
+    var temperatureUnit: String
+        get() = prefs.getString(KEY_TEMP_UNIT, "C") ?: "C"
+        set(value) = prefs.edit().putString(KEY_TEMP_UNIT, value).apply()
+
+    var distanceUnit: String
+        get() = prefs.getString(KEY_DISTANCE_UNIT, "km") ?: "km"
+        set(value) = prefs.edit().putString(KEY_DISTANCE_UNIT, value).apply()
+
+    var timeFormat: String
+        get() = prefs.getString(KEY_TIME_FORMAT, "system") ?: "system"
+        set(value) = prefs.edit().putString(KEY_TIME_FORMAT, value).apply()
+
+    var languageTag: String
+        get() = prefs.getString(KEY_LANGUAGE_TAG, "system") ?: "system"
+        set(value) = prefs.edit().putString(KEY_LANGUAGE_TAG, value).apply()
+
+    var pushToken: String
+        get() = prefs.getString(KEY_PUSH_TOKEN, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PUSH_TOKEN, value).apply()
+
+    var alertBaselines: JSONObject
+        get() = try {
+            JSONObject(prefs.getString(KEY_ALERT_BASELINES, "{}") ?: "{}")
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        set(value) = prefs.edit().putString(KEY_ALERT_BASELINES, value.toString()).apply()
+
+    var sentPostEventFeedbackIds: Set<String>
+        get() = prefs.getStringSet(KEY_SENT_FEEDBACK_IDS, emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet(KEY_SENT_FEEDBACK_IDS, value).apply()
+
     var favorites: List<Place>
         get() = try {
             val array = JSONArray(prefs.getString(KEY_FAVORITES, "[]") ?: "[]")
@@ -214,5 +274,19 @@ class Store(context: Context) {
         private const val KEY_LAST_PLACE = "last_place"
         private const val KEY_VIEWPOINTS = "viewpoints"
         private const val KEY_CACHED_ACCOUNT = "cached_account"
+        private const val KEY_IMPROVED_ALERTS = "forecast_improved_alerts"
+        private const val KEY_FEEDBACK_ALERTS = "post_event_feedback_alerts"
+        private const val KEY_QUIET_ENABLED = "quiet_hours_enabled"
+        private const val KEY_QUIET_START = "quiet_hours_start"
+        private const val KEY_QUIET_END = "quiet_hours_end"
+        private const val KEY_DISABLED_ALERT_PLACES = "disabled_alert_places"
+        private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
+        private const val KEY_TEMP_UNIT = "temperature_unit"
+        private const val KEY_DISTANCE_UNIT = "distance_unit"
+        private const val KEY_TIME_FORMAT = "time_format"
+        private const val KEY_LANGUAGE_TAG = "language_tag"
+        private const val KEY_PUSH_TOKEN = "push_token"
+        private const val KEY_ALERT_BASELINES = "alert_baselines"
+        private const val KEY_SENT_FEEDBACK_IDS = "sent_feedback_ids"
     }
 }

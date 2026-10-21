@@ -110,9 +110,9 @@ fun ScoreRing(
         contentAlignment = Alignment.BottomCenter,
     ) {
         val ringWidth = maxWidth
-        val valueSize = (ringWidth.value * 0.19f).coerceIn(26f, 54f).sp
-        val percentSize = (ringWidth.value * 0.075f).coerceIn(10f, 20f).sp
-        val labelSize = (ringWidth.value * 0.065f).coerceIn(11f, 15.5f).sp
+        val valueSize = (ringWidth.value * 0.165f).coerceIn(22f, 46f).sp
+        val percentSize = (ringWidth.value * 0.068f).coerceIn(10f, 18f).sp
+        val labelSize = (ringWidth.value * 0.062f).coerceIn(10.5f, 14.5f).sp
 
         Canvas(Modifier.fillMaxSize()) {
             val scale = min(size.width / 320f, size.height / 206f)
@@ -121,9 +121,9 @@ fun ScoreRing(
             fun point(x: Float, y: Float) = Offset(offsetX + x * scale, offsetY + y * scale)
 
             val cx = 160f
-            val cy = 172f
-            val radius = 128f
-            val strokeWidth = 34f * scale
+            val cy = 178f
+            val radius = 134f
+            val strokeWidth = 30f * scale
             val topLeft = point(cx - radius, cy - radius)
             val arcSize = Size(2f * radius * scale, 2f * radius * scale)
             val gradient = Brush.horizontalGradient(
@@ -172,7 +172,7 @@ fun ScoreRing(
             PARTICLES.forEach { particle ->
                 if (current >= particle.progress) {
                     val angle = (180f - particle.progress * 1.8f) * (PI / 180.0).toFloat()
-                    val particleRadius = radius - 34f / 2f + particle.lane * 34f
+                    val particleRadius = radius - 30f / 2f + particle.lane * 30f
                     drawCircle(
                         color = Color.White.copy(alpha = particle.opacity),
                         radius = particle.size * scale,
@@ -185,8 +185,8 @@ fun ScoreRing(
             }
 
             val angle = (180f - current * 1.8f) * (PI / 180.0).toFloat()
-            val outerRadius = radius + 34f / 2f + 11f
-            val innerRadius = radius - 34f / 2f - 9f
+            val outerRadius = radius + 30f / 2f + 9f
+            val innerRadius = radius - 30f / 2f - 5f
             drawLine(
                 color = Color.White.copy(alpha = 0.94f),
                 start = point(cx + innerRadius * cos(angle), cy - innerRadius * sin(angle)),
@@ -197,9 +197,9 @@ fun ScoreRing(
         }
 
         Column(
-            modifier = Modifier.offset(y = (-(ringWidth.value * 0.1f)).dp),
+            modifier = Modifier.offset(y = (-(ringWidth.value * 0.03f)).dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Row(verticalAlignment = Alignment.Top) {
                 Text(

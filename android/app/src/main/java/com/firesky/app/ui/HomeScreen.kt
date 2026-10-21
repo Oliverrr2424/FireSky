@@ -14,6 +14,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.indication
@@ -35,7 +36,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -60,6 +60,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +77,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -90,16 +92,24 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
 import com.firesky.app.FireSkyViewModel
 import com.firesky.app.R
+import com.firesky.app.UiState
 import com.firesky.app.data.PRESET_PLACES
 import com.firesky.app.data.Place
-import com.firesky.app.UiState
+import com.firesky.app.ui.map.ChaseMapScreen
 import com.firesky.app.ui.map.HeatMapCard
 import com.firesky.app.ui.theme.DisplayFamily
 import com.firesky.app.ui.theme.SurfaceControl
+import com.firesky.app.ui.theme.SurfaceHairline
 import com.firesky.app.ui.theme.SurfaceInset
+import com.firesky.app.ui.theme.SurfacePanel
 import com.firesky.app.ui.theme.TextMuted
 import com.firesky.app.ui.theme.TextPrimary
 import com.firesky.app.ui.theme.TextSecondary
@@ -109,27 +119,64 @@ import kotlinx.coroutines.launch
 @Composable
 fun FireSkyApp(viewModel: FireSkyViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    LocalizedAppContainer(languageTag = state.unitPrefs.languageTag) {
+        FireSkyAppContent(viewModel = viewModel, state = state)
+    }
+}
+
+@Composable
+private fun FireSkyAppContent(
+    viewModel: FireSkyViewModel,
+    state: UiState,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route ?: "home"
+
     var locationBusy by remember { mutableStateOf(false) }
+    var locationGranted by remember { mutableStateOf(LocationHelper.hasPermission(context)) }
     var notificationsAllowed by remember { mutableStateOf(areNotificationsAllowed(context)) }
     var exactAlarmsAllowed by remember { mutableStateOf(canScheduleExactAlarms(context)) }
+    var pendingOnboardingNotificationCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        locationGranted = LocationHelper.hasPermission(context)
         notificationsAllowed = areNotificationsAllowed(context)
         exactAlarmsAllowed = canScheduleExactAlarms(context)
     }
-    // The stored preference only counts as "on" when Android will actually show the alert.
+
     val notificationsActive = state.notificationsEnabled && notificationsAllowed
-    // Without "Alarms & reminders" access Android may deliver an alert up to an hour late.
     val onAllowExactAlarms: (() -> Unit)? = if (notificationsActive && !exactAlarmsAllowed) {
         { runCatching { context.startActivity(exactAlarmSettingsIntent(context)) } }
     } else {
         null
     }
 
-    BackHandler(enabled = state.showAccount) { viewModel.setAccountVisible(false) }
-    BackHandler(enabled = !state.showAccount && state.showSearch) { viewModel.setSearchVisible(false) }
+    fun navigateToTab(route: String) {
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    // Deep-link OAuth callbacks set state.showAccount = true; route to the Account tab.
+    LaunchedEffect(state.showAccount) {
+        if (state.showAccount) {
+            navigateToTab("account")
+            viewModel.setAccountVisible(false)
+        }
+    }
+
+    BackHandler(enabled = currentRoute == "home" && state.showSearch) {
+        viewModel.setSearchVisible(false)
+    }
 
     fun showMessage(message: String, settingsIntent: Intent? = null) {
         scope.launch {
@@ -152,7 +199,10 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
             try {
                 val location = LocationHelper.getCurrentLocation(context)
                 when {
-                    location != null -> viewModel.selectPlace(LocationHelper.placeFor(context, location), source = "location")
+                    location != null -> {
+                        locationGranted = true
+                        viewModel.selectPlace(LocationHelper.placeFor(context, location), source = "location")
+                    }
                     !LocationHelper.isLocationEnabled(context) -> showMessage(
                         "Location is turned off. Turn it on or search for a city.",
                         Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS),
@@ -169,6 +219,7 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { granted ->
         if (granted.values.any { it }) {
+            locationGranted = true
             locateWithPermission()
         } else if (canAskAgain(context, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) {
             showMessage("FireSky needs location access to forecast where you are. You can also search for a city.")
@@ -194,7 +245,11 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         notificationsAllowed = areNotificationsAllowed(context)
-        if (granted) {
+        val callback = pendingOnboardingNotificationCallback
+        pendingOnboardingNotificationCallback = null
+        if (callback != null) {
+            callback()
+        } else if (granted) {
             promptExactAlarmsIfNeeded()
         } else {
             showMessage(
@@ -234,7 +289,6 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            // Below Android 13, or the app's notifications were switched off in system settings.
             showMessage(
                 "Notifications are turned off for FireSky. Turn them on in Settings to get sky alerts.",
                 notificationSettingsIntent(context),
@@ -254,73 +308,150 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
 
     Box(Modifier.fillMaxSize()) {
         WeatherBackdrop(theme = state.theme, isNight = state.isNight)
-        if (state.showAccount) {
-            AccountPage(
-                state = state,
-                notificationsActive = notificationsActive,
-                notificationsBlocked = state.notificationsEnabled && !notificationsAllowed,
-                onOpenNotificationSettings = {
-                    runCatching { context.startActivity(notificationSettingsIntent(context)) }
-                },
-                onAllowExactAlarms = onAllowExactAlarms,
-                onClose ={ viewModel.setAccountVisible(false) },
-                onSignInPassword = { action, email, password, name ->
-                    viewModel.signInWithPassword(action, email, password, name)
-                },
-                onGoogle = {
-                    viewModel.startGoogleSignIn { url ->
-                        runCatching {
-                            androidx.browser.customtabs.CustomTabsIntent.Builder().build()
-                                .launchUrl(context, Uri.parse(url))
-                        }.onFailure {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                        }
-                    }
-                },
-                onSignOut = { viewModel.signOut() },
-                onSaveProfile = { viewModel.saveProfile(it) },
-                onChangePassword = { current, next, done -> viewModel.changePassword(current, next, done) },
-                onDelete = { done -> viewModel.deleteAccount(done) },
-                onSettingsChanged = { patch ->
-                    patch.notificationsEnabled?.let { setNotifications(it) }
-                    patch.alertThreshold?.let { viewModel.setAlertThreshold(it) }
-                    patch.alertLeadMinutes?.let { viewModel.setAlertLeadMinutes(it) }
-                    patch.sunriseAlerts?.let { viewModel.setSunriseAlerts(it) }
-                    patch.sunsetAlerts?.let { viewModel.setSunsetAlerts(it) }
-                },
-            )
-        } else {
-            HomeContent(
+
+        if (!state.onboardingCompleted) {
+            OnboardingScreen(
                 state = state,
                 locationBusy = locationBusy,
-                notificationsActive = notificationsActive,
-                onAllowExactAlarms = onAllowExactAlarms,
-                onToggleSearch = { viewModel.setSearchVisible(!state.showSearch) },
+                locationGranted = locationGranted,
+                onRequestLocation = ::locate,
                 onSelectPlace = { viewModel.selectPlace(it) },
-                onSelectMode = { viewModel.selectMode(it) },
-                onToggleFavorite = { viewModel.toggleFavorite() },
-                onLocate = ::locate,
-                onRefresh = { viewModel.refresh() },
-                onToggleNotifications = { setNotifications(!notificationsActive) },
-                onShare = ::share,
-                onSearchQuery = { viewModel.updateSearchQuery(it) },
-                onSearchSubmit = { viewModel.submitSearch() },
-                onSelectDay = { viewModel.selectDay(it) },
-                onSampleSelected = { viewModel.selectMapSample(it) },
-                onSaveViewpoint = { name -> viewModel.saveViewpoint(name) },
-                onOpenViewpoint = { viewModel.openViewpoint(it) },
-                onToggleReaction = { viewModel.toggleReaction(it) },
-                onFeedbackEditing = { viewModel.setFeedbackEditing(it) },
-                onAlertLead = { viewModel.setAlertLeadMinutes(it) },
-                onAccount = { viewModel.setAccountVisible(true) },
+                onThresholdChanged = { viewModel.setAlertThreshold(it) },
+                onLeadMinutesChanged = { viewModel.setAlertLeadMinutes(it) },
+                onSunriseAlertsChanged = { viewModel.setSunriseAlerts(it) },
+                onSunsetAlertsChanged = { viewModel.setSunsetAlerts(it) },
+                onImprovedAlertsChanged = { viewModel.setForecastImprovedAlerts(it) },
+                onRequestNotificationPermission = { onComplete ->
+                    if (!state.notificationsEnabled) viewModel.toggleNotifications()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        pendingOnboardingNotificationCallback = onComplete
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        onComplete()
+                    }
+                },
+                onSkipNotifications = {
+                    if (state.notificationsEnabled) viewModel.toggleNotifications()
+                },
+                onTemperatureUnitChanged = { viewModel.setTemperatureUnit(it) },
+                onDistanceUnitChanged = { viewModel.setDistanceUnit(it) },
+                onTimeFormatChanged = { viewModel.setTimeFormat(it) },
+                onLanguageChanged = { viewModel.setLanguageTag(it) },
+                onFinish = { viewModel.completeOnboarding() },
             )
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = "home",
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        composable("home") {
+                            HomeContent(
+                                state = state,
+                                locationBusy = locationBusy,
+                                notificationsActive = notificationsActive,
+                                onAllowExactAlarms = onAllowExactAlarms,
+                                onToggleSearch = { viewModel.setSearchVisible(!state.showSearch) },
+                                onSelectPlace = { viewModel.selectPlace(it) },
+                                onSelectMode = { viewModel.selectMode(it) },
+                                onToggleFavorite = { viewModel.toggleFavorite() },
+                                onLocate = ::locate,
+                                onRefresh = { viewModel.refresh() },
+                                onToggleNotifications = { setNotifications(!notificationsActive) },
+                                onShare = ::share,
+                                onSearchQuery = { viewModel.updateSearchQuery(it) },
+                                onSearchSubmit = { viewModel.submitSearch() },
+                                onSelectDay = { viewModel.selectDay(it) },
+                                onSampleSelected = { viewModel.selectMapSample(it) },
+                                onSaveViewpoint = { name -> viewModel.saveViewpoint(name) },
+                                onOpenViewpoint = { viewModel.openViewpoint(it) },
+                                onToggleReaction = { viewModel.toggleReaction(it) },
+                                onFeedbackEditing = { viewModel.setFeedbackEditing(it) },
+                                onAlertLead = { viewModel.setAlertLeadMinutes(it) },
+                                onOpenFullMap = { navigateToTab("map") },
+                            )
+                        }
+                        composable("map") {
+                            ChaseMapScreen(
+                                state = state,
+                                onSelectMode = { viewModel.selectMode(it) },
+                                onInspectPoint = { lat, lon -> viewModel.inspectChasePoint(lat, lon) },
+                                onUseSpotAsPlace = { place ->
+                                    viewModel.selectPlace(place)
+                                    navigateToTab("home")
+                                },
+                                onSaveSpotViewpoint = { name, lat, lon ->
+                                    viewModel.saveViewpointAt(name, lat, lon)
+                                    showMessage("Saved chase viewpoint: $name")
+                                },
+                            )
+                        }
+                        composable("account") {
+                            AccountPage(
+                                state = state,
+                                notificationsActive = notificationsActive,
+                                notificationsBlocked = state.notificationsEnabled && !notificationsAllowed,
+                                onOpenNotificationSettings = {
+                                    runCatching { context.startActivity(notificationSettingsIntent(context)) }
+                                },
+                                onAllowExactAlarms = onAllowExactAlarms,
+                                onClose = { navigateToTab("home") },
+                                onSignInPassword = { action, email, password, name ->
+                                    viewModel.signInWithPassword(action, email, password, name)
+                                },
+                                onGoogle = {
+                                    viewModel.startGoogleSignIn { url ->
+                                        runCatching {
+                                            androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+                                                .launchUrl(context, Uri.parse(url))
+                                        }.onFailure {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                        }
+                                    }
+                                },
+                                onSignOut = { viewModel.signOut() },
+                                onSaveProfile = { viewModel.saveProfile(it) },
+                                onChangePassword = { current, next, done -> viewModel.changePassword(current, next, done) },
+                                onDelete = { done -> viewModel.deleteAccount(done) },
+                                onSettingsChanged = { patch ->
+                                    patch.notificationsEnabled?.let { setNotifications(it) }
+                                    patch.alertThreshold?.let { viewModel.setAlertThreshold(it) }
+                                    patch.alertLeadMinutes?.let { viewModel.setAlertLeadMinutes(it) }
+                                    patch.sunriseAlerts?.let { viewModel.setSunriseAlerts(it) }
+                                    patch.sunsetAlerts?.let { viewModel.setSunsetAlerts(it) }
+                                    patch.forecastImprovedAlerts?.let { viewModel.setForecastImprovedAlerts(it) }
+                                    patch.postEventFeedbackAlerts?.let { viewModel.setPostEventFeedbackAlerts(it) }
+                                    patch.quietHoursEnabled?.let { viewModel.setQuietHoursEnabled(it) }
+                                    patch.quietHoursRange?.let { (start, end) -> viewModel.setQuietHoursRange(start, end) }
+                                    patch.togglePlaceAlert?.let { viewModel.togglePlaceAlert(it) }
+                                    patch.temperatureUnit?.let { viewModel.setTemperatureUnit(it) }
+                                    patch.distanceUnit?.let { viewModel.setDistanceUnit(it) }
+                                    patch.timeFormat?.let { viewModel.setTimeFormat(it) }
+                                    patch.languageTag?.let { viewModel.setLanguageTag(it) }
+                                    if (patch.replayOnboarding) viewModel.reopenOnboarding()
+                                },
+                            )
+                        }
+                    }
+                }
+                FireSkyBottomNavBar(
+                    currentRoute = currentRoute,
+                    avatarUrl = state.account?.user?.avatarUrl,
+                    onSelectRoute = ::navigateToTab,
+                )
+            }
         }
+
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .padding(horizontal = 14.dp, vertical = 72.dp)
                 .widthIn(max = 560.dp),
         ) { data ->
             Snackbar(
@@ -334,13 +465,132 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
     }
 }
 
+@Composable
+private fun FireSkyBottomNavBar(
+    currentRoute: String,
+    avatarUrl: String?,
+    onSelectRoute: (String) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xD90E2038))
+            .drawBehind {
+                drawLine(
+                    color = SurfaceHairline,
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, 0f),
+                    strokeWidth = 1f,
+                )
+            }
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .widthIn(max = 520.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 8.dp)
+                .selectableGroup(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BottomNavItem(
+                route = "home",
+                label = stringResource(R.string.nav_forecast),
+                iconRes = R.drawable.ic_sun_medium,
+                selected = currentRoute == "home",
+                modifier = Modifier.weight(1f),
+                onClick = { onSelectRoute("home") },
+            )
+            BottomNavItem(
+                route = "map",
+                label = stringResource(R.string.nav_chase_map),
+                iconRes = R.drawable.ic_compass,
+                selected = currentRoute == "map",
+                modifier = Modifier.weight(1f),
+                onClick = { onSelectRoute("map") },
+            )
+            BottomNavItem(
+                route = "account",
+                label = stringResource(R.string.nav_account),
+                iconRes = R.drawable.ic_user_round,
+                avatarUrl = avatarUrl,
+                selected = currentRoute == "account",
+                modifier = Modifier.weight(1f),
+                onClick = { onSelectRoute("account") },
+            )
+        }
+    }
+}
+
+@Composable
+private fun BottomNavItem(
+    route: String,
+    label: String,
+    iconRes: Int,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    avatarUrl: String? = null,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .selectable(
+                selected = selected,
+                interactionSource = interactionSource,
+                indication = ripple(),
+                role = Role.Tab,
+                onClick = onClick,
+            )
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .height(28.dp)
+                .width(52.dp)
+                .clip(CircleShape)
+                .background(if (selected) Color(0x3DFFD76A) else Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (route == "account" && avatarUrl != null) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = label,
+                    modifier = Modifier.size(20.dp).clip(CircleShape),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+            } else {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = label,
+                    tint = if (selected) Color(0xFFFFD76A) else TextSecondary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        Text(
+            text = label,
+            color = if (selected) Color.White else TextSecondary,
+            fontFamily = UiFamily,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.W700 else FontWeight.W500,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 private fun areNotificationsAllowed(context: Context): Boolean {
     val permitted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     return permitted && NotificationManagerCompat.from(context).areNotificationsEnabled()
 }
 
-/** False once a permission is denied for good: the system will not show its dialog again. */
 private fun canAskAgain(context: Context, vararg permissions: String): Boolean {
     val activity = context.findActivity() ?: return false
     return permissions.any { ActivityCompat.shouldShowRequestPermissionRationale(activity, it) }
@@ -359,7 +609,6 @@ private fun canScheduleExactAlarms(context: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
         context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() != false
 
-/** Only used on Android 12+, where [canScheduleExactAlarms] can be false. */
 private fun exactAlarmSettingsIntent(context: Context): Intent =
     Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + context.packageName))
 
@@ -393,7 +642,7 @@ private fun HomeContent(
     onToggleReaction: (String) -> Unit,
     onFeedbackEditing: (Boolean) -> Unit,
     onAlertLead: (Int) -> Unit,
-    onAccount: () -> Unit,
+    onOpenFullMap: () -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxWidth < 720.dp
@@ -403,53 +652,34 @@ private fun HomeContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // The status-bar inset sits outside the scroll so scrolled content is clipped below the
-                // status icons instead of drawing under them.
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
                 .verticalScroll(rememberScrollState())
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                 .padding(
                     start = horizontalPadding,
                     end = horizontalPadding,
-                    top = if (compact) 16.dp else 28.dp,
+                    top = if (compact) 12.dp else 24.dp,
                     bottom = if (compact) 24.dp else 36.dp,
                 ),
         ) {
-            TopBar(state = state, compact = compact, onAccount = onAccount)
-            Spacer(Modifier.height(if (compact) 18.dp else 28.dp))
-            LocationRow(
+            LocationHeaderAndControls(
                 state = state,
                 compact = compact,
                 locationBusy = locationBusy,
                 notificationsActive = notificationsActive,
                 onToggleSearch = onToggleSearch,
+                onSelectPlace = onSelectPlace,
                 onSelectMode = onSelectMode,
                 onToggleFavorite = onToggleFavorite,
                 onLocate = onLocate,
                 onRefresh = onRefresh,
                 onToggleNotifications = onToggleNotifications,
                 onShare = onShare,
+                onSearchQuery = onSearchQuery,
+                onSearchSubmit = onSearchSubmit,
             )
-            Spacer(Modifier.height(if (compact) 5.dp else 9.dp))
-            SavedPlacesBar(
-                favorites = state.favorites,
-                place = state.place,
-                compact = compact,
-                onSelect = onSelectPlace,
-            )
-            if (state.showSearch) {
-                Spacer(Modifier.height(if (compact) 4.dp else 10.dp))
-                SearchPanel(
-                    state = state,
-                    compact = compact,
-                    onQuery = onSearchQuery,
-                    onSubmit = onSearchSubmit,
-                    onSelect = onSelectPlace,
-                )
-            }
 
             val outlook = state.selectedOutlook
-            // Nothing cached and the load failed (for example the first launch while offline).
             val coldStartError = !state.loading && outlook == null && state.error.isNotBlank()
 
             if (state.offline) {
@@ -481,6 +711,7 @@ private fun HomeContent(
                             mode = state.activeMode,
                             compact = compact,
                             onSampleSelected = onSampleSelected,
+                            onOpenFullMap = onOpenFullMap,
                         )
                         HeatMapCard(
                             place = state.place,
@@ -489,6 +720,7 @@ private fun HomeContent(
                             mode = state.activeMode,
                             compact = compact,
                             onSampleSelected = onSampleSelected,
+                            onOpenFullMap = onOpenFullMap,
                         )
                     }
                 } else {
@@ -501,6 +733,7 @@ private fun HomeContent(
                             compact = false,
                             modifier = Modifier.weight(1f),
                             onSampleSelected = onSampleSelected,
+                            onOpenFullMap = onOpenFullMap,
                         )
                         HeatMapCard(
                             place = state.place,
@@ -510,6 +743,7 @@ private fun HomeContent(
                             compact = false,
                             modifier = Modifier.weight(1f),
                             onSampleSelected = onSampleSelected,
+                            onOpenFullMap = onOpenFullMap,
                         )
                     }
                 }
@@ -573,169 +807,123 @@ private fun HomeContent(
     }
 }
 
+/**
+ * Cleanly structured top header:
+ * 1. Place Title Row (tap to expand/collapse search right underneath)
+ * 2. Expanded Search & Unified Cities Drawer (directly under the place title, no duplicate city rows!)
+ *    OR collapsed Saved Places chips row when search is closed.
+ * 3. Sunrise / Sunset mode selector + Quick Action buttons.
+ */
 @Composable
-private fun TopBar(state: UiState, compact: Boolean, onAccount: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            LucideIcon(R.drawable.ic_sun_medium, null, tint = Color.White, size = 22.dp)
-            Text(
-                text = "FireSky Now",
-                color = Color.White,
-                fontFamily = DisplayFamily,
-                fontSize = (if (compact) 19 else 25).sp,
-                fontWeight = FontWeight.W600,
-                letterSpacing = (-0.5).sp,
-            )
-        }
-        // The 38dp avatar keeps its layout slot; the 48dp touch target overflows it evenly.
-        Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-            val interactionSource = remember { MutableInteractionSource() }
-            Box(
-                modifier = Modifier
-                    .requiredSize(48.dp)
-                    .clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                        role = Role.Button,
-                        onClickLabel = "Open account and alerts",
-                        onClick = onAccount,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(SurfaceControl)
-                        .indication(interactionSource, ripple()),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val avatar = state.account?.user?.avatarUrl
-                    if (avatar != null) {
-                        AsyncImage(
-                            model = avatar,
-                            contentDescription = "Account and alerts",
-                            modifier = Modifier.fillMaxSize().clip(CircleShape),
-                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_user_round),
-                            contentDescription = "Account and alerts",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocationRow(
+private fun LocationHeaderAndControls(
     state: UiState,
     compact: Boolean,
     locationBusy: Boolean,
     notificationsActive: Boolean,
     onToggleSearch: () -> Unit,
+    onSelectPlace: (Place) -> Unit,
     onSelectMode: (String) -> Unit,
     onToggleFavorite: () -> Unit,
     onLocate: () -> Unit,
     onRefresh: () -> Unit,
     onToggleNotifications: () -> Unit,
     onShare: () -> Unit,
+    onSearchQuery: (String) -> Unit,
+    onSearchSubmit: () -> Unit,
 ) {
     val isFavorite = state.favorites.any { it.sameSpot(state.place) }
-    if (compact) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClickLabel = if (state.showSearch) "Close search" else "Search locations", onClick = onToggleSearch),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = state.place.name,
-                    color = Color.White,
-                    fontFamily = DisplayFamily,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.W700,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+    Column(Modifier.fillMaxWidth()) {
+        // 1. Place Title Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(
+                    onClickLabel = if (state.showSearch) "Close search" else "Search locations",
+                    onClick = onToggleSearch,
                 )
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = state.place.name,
+                        color = Color.White,
+                        fontFamily = DisplayFamily,
+                        fontSize = (if (compact) 22 else 28).sp,
+                        fontWeight = FontWeight.W700,
+                        letterSpacing = (-0.6).sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (state.place.admin1.isNotBlank()) {
+                        Text(
+                            text = "· ${state.place.admin1}",
+                            color = TextSecondary,
+                            fontFamily = DisplayFamily,
+                            fontSize = (if (compact) 15 else 20).sp,
+                            fontWeight = FontWeight.W500,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(SurfaceControl),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
-                    painter = painterResource(if (state.showSearch) R.drawable.ic_chevron_down else R.drawable.ic_chevron_right),
+                    painter = painterResource(if (state.showSearch) R.drawable.ic_chevron_down else R.drawable.ic_search),
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            // The mode/action row is 48dp tall with a 38dp visible track, so 5dp of the gap lives inside it.
-            Spacer(Modifier.height(5.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ModeToggle(activeMode = state.activeMode, onSelect = onSelectMode, modifier = Modifier.weight(1f))
-                QuickActions(
-                    // Shift by the touch-target margin so the last circle lines up with the avatar above.
-                    modifier = Modifier.offset(x = 7.dp),
-                    favorite = isFavorite,
-                    notifications = notificationsActive,
-                    locationBusy = locationBusy,
-                    onFavorite = onToggleFavorite,
-                    onLocate = onLocate,
-                    onRefresh = onRefresh,
-                    onNotifications = onToggleNotifications,
-                    onShare = onShare,
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }
-    } else {
+
+        // 2. Immediately below the Place Title: Search Panel (when open) OR Saved Places row (when closed)
+        if (state.showSearch) {
+            Spacer(Modifier.height(8.dp))
+            SearchPanel(
+                state = state,
+                compact = compact,
+                onQuery = onSearchQuery,
+                onSubmit = onSearchSubmit,
+                onSelect = onSelectPlace,
+            )
+            Spacer(Modifier.height(8.dp))
+        } else if (state.favorites.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            SavedPlacesBar(
+                favorites = state.favorites,
+                place = state.place,
+                compact = compact,
+                onSelect = onSelectPlace,
+            )
+            Spacer(Modifier.height(4.dp))
+        }
+
+        // 3. Sunrise / Sunset Mode Toggle + Quick Actions
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .clickable(onClickLabel = if (state.showSearch) "Close search" else "Search locations", onClick = onToggleSearch),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = state.place.name,
-                    color = Color.White,
-                    fontFamily = DisplayFamily,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.W700,
-                    letterSpacing = (-0.8).sp,
-                    maxLines = 1,
-                )
-                if (state.place.admin1.isNotBlank()) {
-                    Text(" · ", color = TextSecondary, fontSize = 22.sp)
-                    Text(
-                        state.place.admin1,
-                        color = TextSecondary,
-                        fontFamily = DisplayFamily,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.W600,
-                        maxLines = 1,
-                    )
-                }
-                Icon(
-                    painter = painterResource(if (state.showSearch) R.drawable.ic_chevron_down else R.drawable.ic_chevron_right),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            ModeToggle(activeMode = state.activeMode, onSelect = onSelectMode, modifier = Modifier.width(320.dp))
+            ModeToggle(
+                activeMode = state.activeMode,
+                onSelect = onSelectMode,
+                modifier = if (compact) Modifier.weight(1f) else Modifier.width(300.dp),
+            )
+            if (!compact) Spacer(Modifier.weight(1f))
             QuickActions(
+                modifier = if (compact) Modifier.offset(x = 7.dp) else Modifier,
                 favorite = isFavorite,
                 notifications = notificationsActive,
                 locationBusy = locationBusy,
@@ -751,7 +939,6 @@ private fun LocationRow(
 
 @Composable
 private fun ModeToggle(activeMode: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
-    // A 48dp tall row of tabs; the visible 38dp track is drawn inset so the touch targets can be full height.
     Row(
         modifier = modifier
             .height(48.dp)
@@ -769,8 +956,8 @@ private fun ModeToggle(activeMode: String, onSelect: (String) -> Unit, modifier:
             .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        ModeButton("Sunrise", activeMode == "sunrise", Modifier.weight(1f)) { onSelect("sunrise") }
-        ModeButton("Sunset", activeMode == "sunset", Modifier.weight(1f)) { onSelect("sunset") }
+        ModeButton(stringResource(R.string.mode_sunrise), activeMode == "sunrise", Modifier.weight(1f)) { onSelect("sunrise") }
+        ModeButton(stringResource(R.string.mode_sunset), activeMode == "sunset", Modifier.weight(1f)) { onSelect("sunset") }
     }
 }
 
@@ -817,7 +1004,6 @@ private fun QuickActions(
     onNotifications: () -> Unit,
     onShare: () -> Unit,
 ) {
-    // Each button reserves a 48dp touch target around its 34dp circle, so no extra spacing is needed.
     Row(modifier) {
         ControlIconButton(
             painter = painterResource(R.drawable.ic_star),
@@ -867,14 +1053,14 @@ private fun SavedPlacesBar(
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 9.dp else 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
     ) {
         if (!compact) {
-            Text("Saved places", color = TextMuted, fontSize = 14.sp)
+            Text(stringResource(R.string.label_saved_places), color = TextMuted, fontSize = 14.sp)
         }
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 9.dp else 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
         ) {
             favorites.forEach { favorite ->
                 Pill(
@@ -895,14 +1081,25 @@ private fun SearchPanel(
     onSubmit: () -> Unit,
     onSelect: (Place) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth()) {
+    val unifiedCities = remember(state.favorites) {
+        val favs = state.favorites
+        val presetsWithoutDupes = PRESET_PLACES.filter { preset -> favs.none { it.sameSpot(preset) } }
+        favs.map { it to true } + presetsWithoutDupes.map { it to false }
+    }
+
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        contentPadding = PaddingValues(12.dp),
+    ) {
+        // 1. Search Input Bar at the top
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 44.dp)
                 .clip(CircleShape)
                 .background(SurfaceControl)
-                .padding(start = 14.dp, end = 8.dp),
+                .padding(start = 14.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LucideIcon(R.drawable.ic_search, null, tint = TextSecondary, size = 16.dp)
@@ -918,14 +1115,20 @@ private fun SearchPanel(
                 keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
                 decorationBox = { inner ->
                     if (state.search.query.isEmpty()) {
-                        Text("Search North American cities", color = TextSecondary, fontSize = 15.sp, maxLines = 1)
+                        Text(
+                            stringResource(R.string.search_placeholder),
+                            color = TextSecondary,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                     inner()
                 },
             )
             Box(
                 modifier = Modifier
-                    .heightIn(min = 32.dp)
+                    .heightIn(min = 34.dp)
                     .clip(CircleShape)
                     .background(SurfaceInset)
                     .clickable(onClick = onSubmit)
@@ -939,26 +1142,14 @@ private fun SearchPanel(
                         color = Color.White,
                     )
                 } else {
-                    Text("Search", color = TextPrimary, fontSize = 13.sp)
+                    Text(stringResource(R.string.action_search), color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.W600)
                 }
             }
         }
-        Spacer(Modifier.height(7.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            PRESET_PLACES.forEach { preset ->
-                Text(
-                    text = preset.name,
-                    color = TextSecondary,
-                    fontSize = if (compact) 11.sp else 13.sp,
-                    modifier = Modifier.clickable { onSelect(preset) },
-                )
-            }
-        }
+
+        // 2. Search results (if any) directly under the input bar
         if (state.search.error.isNotBlank()) {
-            Spacer(Modifier.height(7.dp))
+            Spacer(Modifier.height(8.dp))
             Text(state.search.error, color = TextSecondary, fontSize = 12.sp)
         }
         if (state.search.results.isNotEmpty()) {
@@ -971,19 +1162,52 @@ private fun SearchPanel(
                             .clip(RoundedCornerShape(14.dp))
                             .background(SurfaceInset)
                             .clickable { onSelect(result) }
-                            .padding(horizontal = 12.dp, vertical = 11.dp),
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        LucideIcon(R.drawable.ic_map_pin, null, tint = TextSecondary, size = 16.dp)
+                        LucideIcon(R.drawable.ic_map_pin, null, tint = Color(0xFFFFD76A), size = 15.dp)
                         Text(
                             text = "${result.name}${if (result.admin1.isNotBlank()) ", ${result.admin1}" else ""}",
                             color = TextPrimary,
                             fontSize = 13.sp,
+                            fontWeight = FontWeight.W600,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                }
+            }
+        }
+
+        // 3. Unified Saved + Popular City Chips (no duplicate cities!)
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            unifiedCities.forEach { (city, isSaved) ->
+                val selected = city.sameSpot(state.place)
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (selected) Color(0x4DFFFFFF) else SurfaceControl)
+                        .border(1.dp, if (selected) Color(0x88FFD76A) else SurfaceHairline, CircleShape)
+                        .clickable { onSelect(city) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    if (isSaved) {
+                        LucideIcon(R.drawable.ic_star, null, tint = Color(0xFFFFD76A), size = 11.dp)
+                    }
+                    Text(
+                        text = city.name,
+                        color = if (selected) Color.White else TextSecondary,
+                        fontSize = if (compact) 12.sp else 13.sp,
+                        fontWeight = if (selected) FontWeight.W700 else FontWeight.W500,
+                    )
                 }
             }
         }
@@ -1050,7 +1274,7 @@ private fun ErrorState(message: String, offline: Boolean, onRetry: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 LucideIcon(R.drawable.ic_refresh_cw, null, tint = TextPrimary, size = 17.dp)
-                Text("Retry", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.W600)
+                Text(stringResource(R.string.action_retry), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.W600)
             }
         }
     }
@@ -1066,7 +1290,7 @@ private fun SourceLine() {
         LucideIcon(R.drawable.ic_check, null, tint = TextMuted, size = 14.dp)
         Spacer(Modifier.width(6.dp))
         Text(
-            text = "WEATHER AND AIR QUALITY FORECAST · 7-DAY OUTLOOK",
+            text = stringResource(R.string.source_line_footer),
             color = TextMuted,
             fontSize = 11.sp,
             letterSpacing = 1.sp,

@@ -121,6 +121,7 @@ fun HeatMapCard(
     compact: Boolean,
     modifier: Modifier = Modifier,
     onSampleSelected: (ScoredPoint?) -> Unit = {},
+    onOpenFullMap: (() -> Unit)? = null,
 ) {
     GlassCard(
         modifier = modifier,
@@ -133,14 +134,34 @@ fun HeatMapCard(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = if (type == "probability") "PROBABILITY" else "INTENSITY",
+                text = androidx.compose.ui.res.stringResource(
+                    if (type == "probability") com.firesky.app.R.string.label_probability else com.firesky.app.R.string.label_intensity,
+                ),
                 color = TextSecondary,
                 fontFamily = DisplayFamily,
                 fontSize = (if (compact) 9 else 13).sp,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.W700,
                 letterSpacing = (if (compact) 0.8 else 1.4).sp,
             )
-            if (!compact) {
+            if (onOpenFullMap != null) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(com.firesky.app.ui.theme.SurfaceControl)
+                        .clickable(onClick = onOpenFullMap)
+                        .padding(horizontal = 9.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    LucideIcon(com.firesky.app.R.drawable.ic_compass, null, tint = TextSecondary, size = 11.dp)
+                    Text(
+                        text = androidx.compose.ui.res.stringResource(com.firesky.app.R.string.nav_chase_map),
+                        color = TextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.W600,
+                    )
+                }
+            } else if (!compact) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
@@ -148,7 +169,9 @@ fun HeatMapCard(
                         .padding(horizontal = 10.dp, vertical = 3.dp),
                 ) {
                     Text(
-                        text = if (mode == "sunset") "Sunset" else "Sunrise",
+                        text = androidx.compose.ui.res.stringResource(
+                            if (mode == "sunset") com.firesky.app.R.string.mode_sunset else com.firesky.app.R.string.mode_sunrise,
+                        ),
                         color = TextSecondary,
                         fontSize = 11.sp,
                         letterSpacing = 1.sp,
@@ -340,7 +363,6 @@ private fun HeatMap(
                     ),
                 )
             }
-            MapLabels(labels = labels, compact = compact)
         }
 
         if (isReady && !compact) {

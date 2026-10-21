@@ -87,10 +87,10 @@ class ForecastEventsTest {
     fun eveningPlanSchedulesTomorrowMorning() {
         val settings = AccountSettings(alertThreshold = 0, alertLeadMinutes = 60)
         val plans = SkyAlerts.plan(days(), place, settings, now = local("2026-10-21T21:30").toEpochMilli())
-        val sunrise = plans.single { it.mode == "sunrise" }
+        val sunrise = plans.single { it.mode == "sunrise" && it.kind == "alert" }
         assertEquals(local("2026-10-22T07:35").toEpochMilli(), sunrise.eventAt)
         assertEquals(local("2026-10-22T06:35").toEpochMilli(), sunrise.triggerAt)
-        val sunset = plans.single { it.mode == "sunset" }
+        val sunset = plans.single { it.mode == "sunset" && it.kind == "alert" }
         assertEquals(local("2026-10-22T18:20").toEpochMilli(), sunset.eventAt)
     }
 
@@ -104,7 +104,23 @@ class ForecastEventsTest {
             AccountSettings(alertThreshold = 0, sunriseAlerts = false),
             now = local("2026-10-21T05:00").toEpochMilli(),
         )
-        assertEquals(listOf("sunset"), sunsetOnly.map { it.mode })
+        assertEquals(listOf("sunset"), sunsetOnly.filter { it.kind == "alert" }.map { it.mode })
+        assertTrue(sunsetOnly.all { it.mode == "sunset" })
+    }
+
+    @Test
+    fun feedbackIsSeparateFromThePreEventAlertAndFollowsTheWindow() {
+        val forecastDays = days()
+        val plans = SkyAlerts.plan(
+            forecastDays, place, AccountSettings(alertThreshold = 0, postEventFeedbackAlerts = true),
+            now = local("2026-10-21T05:00").toEpochMilli(),
+        )
+        val alert = plans.single { it.mode == "sunset" && it.kind == "alert" }
+        val feedback = plans.single { it.mode == "sunset" && it.kind == "feedback" }
+        val end = forecastDays.first().appearanceWindow.sunset.end ?: forecastDays.first().sunset
+        assertEquals(end.toEpochMilli() + 25 * 60_000L, feedback.triggerAt)
+        assertTrue(feedback.triggerAt > alert.triggerAt)
+        assertTrue(feedback.id != alert.id)
     }
 
     @Test

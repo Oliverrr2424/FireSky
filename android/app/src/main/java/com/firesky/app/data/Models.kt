@@ -16,6 +16,8 @@ data class Place(
         kotlin.math.abs(other.latitude - latitude) < 0.001 &&
             kotlin.math.abs(other.longitude - longitude) < 0.001
 
+    fun spotKey(): String = String.format(java.util.Locale.US, "%.3f,%.3f", latitude, longitude)
+
     fun toJson(): JSONObject = JSONObject()
         .put("name", name)
         .put("admin1", admin1)
@@ -313,6 +315,19 @@ data class AccountSettings(
     val sunriseAlerts: Boolean = true,
     val sunsetAlerts: Boolean = true,
     val alertThreshold: Int = 70,
+    val forecastImprovedAlerts: Boolean = true,
+    val postEventFeedbackAlerts: Boolean = true,
+    val quietHoursEnabled: Boolean = false,
+    val quietHoursStart: Int = 22 * 60,
+    val quietHoursEnd: Int = 7 * 60,
+    val disabledAlertPlaceKeys: Set<String> = emptySet(),
+)
+
+data class UnitPrefs(
+    val temperatureUnit: String = "C",
+    val distanceUnit: String = "km",
+    val timeFormat: String = "system",
+    val languageTag: String = "system",
 )
 
 data class AccountState(

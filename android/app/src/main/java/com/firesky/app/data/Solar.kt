@@ -240,10 +240,57 @@ fun localIsoToUtcDate(value: String?, utcOffsetSeconds: Int = 0): Instant? {
     }
 }
 
-/** Follows the device's 12/24-hour setting; refreshed from the activity on resume. */
+/** Follows the user's unit & clock preferences; refreshed on startup and when settings change. */
 object ClockStyle {
     @Volatile
     var use24Hour: Boolean = true
+
+    @Volatile
+    var temperatureUnit: String = "C"
+
+    @Volatile
+    var distanceUnit: String = "km"
+
+    fun sync(context: android.content.Context, store: Store) {
+        temperatureUnit = store.temperatureUnit
+        distanceUnit = store.distanceUnit
+        use24Hour = when (store.timeFormat) {
+            "24h" -> true
+            "12h" -> false
+            else -> android.text.format.DateFormat.is24HourFormat(context)
+        }
+    }
+}
+
+fun formatTemperature(celsius: Double?, unit: String = ClockStyle.temperatureUnit, includeUnit: Boolean = false): String {
+    val c = celsius ?: 0.0
+    val value = if (unit == "F") c * 9.0 / 5.0 + 32.0 else c
+    val suffix = if (includeUnit) "°$unit" else "°"
+    return "${Math.round(value)}$suffix"
+}
+
+fun formatDistanceKm(km: Double?, unit: String = ClockStyle.distanceUnit, decimals: Int = 1): String {
+    val k = km ?: 0.0
+    val converted = if (unit == "mi") k * 0.621371 else k
+    val label = if (unit == "mi") "mi" else "km"
+    return String.format(java.util.Locale.US, "%.${decimals}f%s", converted, label)
+}
+
+fun formatMinutesOfDay(minutesFromMidnight: Int): String {
+    val normalized = ((minutesFromMidnight % 1440) + 1440) % 1440
+    val h = normalized / 60
+    val m = normalized % 60
+    return if (ClockStyle.use24Hour) {
+        String.format(java.util.Locale.US, "%02d:%02d", h, m)
+    } else {
+        val ampm = if (h < 12) "AM" else "PM"
+        val h12 = when {
+            h == 0 -> 12
+            h > 12 -> h - 12
+            else -> h
+        }
+        String.format(java.util.Locale.US, "%d:%02d %s", h12, m, ampm)
+    }
 }
 
 fun formatTime(value: Instant?, timeZone: String): String {

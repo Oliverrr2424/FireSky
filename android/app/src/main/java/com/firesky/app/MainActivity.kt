@@ -12,6 +12,7 @@ import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.firesky.app.data.ClockStyle
 import com.firesky.app.data.Place
+import com.firesky.app.data.Store
 import com.firesky.app.notifications.SkyAlerts
 import com.firesky.app.ui.FireSkyApp
 import com.firesky.app.ui.theme.FireSkyTheme
@@ -28,7 +29,7 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
-        ClockStyle.use24Hour = DateFormat.is24HourFormat(this)
+        ClockStyle.sync(this, Store(this))
         // A recreated activity must not replay the intent that launched it (e.g. a consumed OAuth code).
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
@@ -46,7 +47,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        ClockStyle.use24Hour = DateFormat.is24HourFormat(this)
+        ClockStyle.sync(this, Store(this))
         viewModel.onAppForeground()
     }
 

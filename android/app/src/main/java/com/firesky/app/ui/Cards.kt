@@ -60,12 +60,15 @@ import com.firesky.app.data.Score
 import com.firesky.app.data.Window
 import com.firesky.app.data.compassLabel
 import com.firesky.app.data.describeScore
+import com.firesky.app.data.formatDistanceKm
 import com.firesky.app.data.formatDuration
 import com.firesky.app.data.formatRange
 import com.firesky.app.data.formatScoreRange
+import com.firesky.app.data.formatTemperature
 import com.firesky.app.data.formatTime
 import com.firesky.app.data.formatTotalDuration
 import com.firesky.app.data.weatherDescription
+import androidx.compose.ui.res.stringResource
 import com.firesky.app.ui.theme.DisplayFamily
 import com.firesky.app.ui.theme.SurfaceControl
 import com.firesky.app.ui.theme.SurfaceHairline
@@ -99,7 +102,7 @@ fun HeroCard(state: UiState, outlook: Forecast, modifier: Modifier = Modifier) {
                     LucideIcon(R.drawable.ic_sparkles, null, tint = TextSecondary, size = 14.dp)
                     Text(
                         text = if (state.selectedDayIndex == 0) {
-                            "TODAY'S FIRE SKY"
+                            stringResource(R.string.todays_fire_sky)
                         } else {
                             formatDayTitle(outlook)
                         },
@@ -115,7 +118,7 @@ fun HeroCard(state: UiState, outlook: Forecast, modifier: Modifier = Modifier) {
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "${Math.round(outlook.current.temperature2m ?: 0.0)}°",
+                        text = formatTemperature(outlook.current.temperature2m, state.unitPrefs.temperatureUnit),
                         color = TextPrimary,
                         fontFamily = DisplayFamily,
                         fontSize = 22.sp,
@@ -141,12 +144,21 @@ fun HeroCard(state: UiState, outlook: Forecast, modifier: Modifier = Modifier) {
             }
             ScoreRing(
                 value = active.probability,
-                label = describeScore(active.probability),
+                label = localizedScoreLabel(active.probability),
                 tone = state.activeMode,
                 modifier = Modifier.width(142.dp),
             )
         }
     }
+}
+
+@Composable
+fun localizedScoreLabel(score: Double): String = when {
+    score >= 85.0 -> stringResource(R.string.score_excellent)
+    score >= 70.0 -> stringResource(R.string.score_high)
+    score >= 52.0 -> stringResource(R.string.score_possible)
+    score >= 34.0 -> stringResource(R.string.score_slight)
+    else -> stringResource(R.string.score_unlikely)
 }
 
 private fun formatDayTitle(outlook: Forecast): String = try {
@@ -178,7 +190,7 @@ fun ForecastStrip(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                "7-day outlook",
+                stringResource(R.string.outlook_7_day),
                 color = Color.White,
                 fontFamily = DisplayFamily,
                 fontSize = 13.sp,
@@ -186,7 +198,7 @@ fun ForecastStrip(
             )
             if (!compact) {
                 Text(
-                    "Tap a day to compare the model signal",
+                    stringResource(R.string.outlook_tap_hint),
                     color = TextMuted,
                     fontSize = 11.sp,
                 )
@@ -199,10 +211,10 @@ fun ForecastStrip(
         ) {
             days.forEachIndexed { index, day ->
                 val label = if (index == 0) {
-                    "Today"
+                    stringResource(R.string.label_today)
                 } else {
                     try {
-                        DateTimeFormatter.ofPattern("EEE, M/d", Locale.US)
+                        DateTimeFormatter.ofPattern("EEE, M/d", Locale.getDefault())
                             .withZone(ZoneId.of(timeZone))
                             .format(day.sunset)
                     } catch (_: Exception) {
@@ -237,7 +249,7 @@ fun ForecastStrip(
                         lineHeight = 18.sp,
                     )
                     Text(
-                        if (index == 0) "Forecast" else "Weather",
+                        if (index == 0) stringResource(R.string.label_forecast) else stringResource(R.string.label_weather),
                         color = TextSecondary,
                         fontSize = 11.sp,
                         maxLines = 1,
@@ -251,6 +263,22 @@ fun ForecastStrip(
 @Composable
 fun AstroCard(outlook: Forecast, activeMode: String, compact: Boolean, modifier: Modifier = Modifier) {
     val appearance = outlook.appearanceWindow[activeMode]
+    val solarRows = listOf(
+        stringResource(R.string.mode_sunrise) to formatTime(outlook.sunrise, outlook.timeZone),
+        stringResource(R.string.mode_sunset) to formatTime(outlook.sunset, outlook.timeZone),
+    )
+    val solarTiles = listOf(
+        stringResource(R.string.label_peak_color) to formatRange(appearance.start, appearance.end, outlook.timeZone),
+        stringResource(R.string.label_best_duration) to formatDuration(appearance.start, appearance.end),
+    )
+    val blueRows = listOf(
+        stringResource(R.string.label_morning) to formatRange(outlook.blueHour.sunrise.start, outlook.blueHour.sunrise.end, outlook.timeZone),
+        stringResource(R.string.label_evening) to formatRange(outlook.blueHour.sunset.start, outlook.blueHour.sunset.end, outlook.timeZone),
+    )
+    val blueTiles = listOf(
+        stringResource(R.string.label_morning_length) to formatDuration(outlook.blueHour.sunrise.start, outlook.blueHour.sunrise.end),
+        stringResource(R.string.label_evening_length) to formatDuration(outlook.blueHour.sunset.start, outlook.blueHour.sunset.end),
+    )
     GlassCard(
         modifier = modifier,
         shape = RoundedCornerShape(22.dp),
@@ -260,32 +288,20 @@ fun AstroCard(outlook: Forecast, activeMode: String, compact: Boolean, modifier:
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             AstroColumn(
                 accent = Color(0x6BE8F5FF),
-                kicker = "Solar Events",
-                rows = listOf(
-                    "Sunrise" to formatTime(outlook.sunrise, outlook.timeZone),
-                    "Sunset" to formatTime(outlook.sunset, outlook.timeZone),
-                ),
-                noteLabel = "Day Length",
+                kicker = stringResource(R.string.kicker_solar_events),
+                rows = solarRows,
+                noteLabel = stringResource(R.string.label_day_length),
                 noteValue = formatDuration(outlook.sunrise, outlook.sunset),
-                tiles = listOf(
-                    "Peak Color" to formatRange(appearance.start, appearance.end, outlook.timeZone),
-                    "Best Duration" to formatDuration(appearance.start, appearance.end),
-                ),
+                tiles = solarTiles,
                 modifier = Modifier.fillMaxWidth(),
             )
             AstroColumn(
                 accent = Color(0xB3FFFFFF),
-                kicker = "Blue Hour",
-                rows = listOf(
-                    "Morning" to formatRange(outlook.blueHour.sunrise.start, outlook.blueHour.sunrise.end, outlook.timeZone),
-                    "Evening" to formatRange(outlook.blueHour.sunset.start, outlook.blueHour.sunset.end, outlook.timeZone),
-                ),
-                noteLabel = "Total",
+                kicker = stringResource(R.string.kicker_blue_hour),
+                rows = blueRows,
+                noteLabel = stringResource(R.string.label_total),
                 noteValue = formatTotalDuration(listOf(outlook.blueHour.sunrise, outlook.blueHour.sunset)),
-                tiles = listOf(
-                    "Morning Length" to formatDuration(outlook.blueHour.sunrise.start, outlook.blueHour.sunrise.end),
-                    "Evening Length" to formatDuration(outlook.blueHour.sunset.start, outlook.blueHour.sunset.end),
-                ),
+                tiles = blueTiles,
                 modifier = Modifier.fillMaxWidth(),
             )
             }
@@ -293,32 +309,20 @@ fun AstroCard(outlook: Forecast, activeMode: String, compact: Boolean, modifier:
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 AstroColumn(
                     accent = Color(0x6BE8F5FF),
-                    kicker = "Solar Events",
-                    rows = listOf(
-                        "Sunrise" to formatTime(outlook.sunrise, outlook.timeZone),
-                        "Sunset" to formatTime(outlook.sunset, outlook.timeZone),
-                    ),
-                    noteLabel = "Day Length",
+                    kicker = stringResource(R.string.kicker_solar_events),
+                    rows = solarRows,
+                    noteLabel = stringResource(R.string.label_day_length),
                     noteValue = formatDuration(outlook.sunrise, outlook.sunset),
-                    tiles = listOf(
-                        "Peak Color" to formatRange(appearance.start, appearance.end, outlook.timeZone),
-                        "Best Duration" to formatDuration(appearance.start, appearance.end),
-                    ),
+                    tiles = solarTiles,
                     modifier = Modifier.weight(1f),
                 )
                 AstroColumn(
                     accent = Color(0xB3FFFFFF),
-                    kicker = "Blue Hour",
-                    rows = listOf(
-                        "Morning" to formatRange(outlook.blueHour.sunrise.start, outlook.blueHour.sunrise.end, outlook.timeZone),
-                        "Evening" to formatRange(outlook.blueHour.sunset.start, outlook.blueHour.sunset.end, outlook.timeZone),
-                    ),
-                    noteLabel = "Total",
+                    kicker = stringResource(R.string.kicker_blue_hour),
+                    rows = blueRows,
+                    noteLabel = stringResource(R.string.label_total),
                     noteValue = formatTotalDuration(listOf(outlook.blueHour.sunrise, outlook.blueHour.sunset)),
-                    tiles = listOf(
-                        "Morning Length" to formatDuration(outlook.blueHour.sunrise.start, outlook.blueHour.sunrise.end),
-                        "Evening Length" to formatDuration(outlook.blueHour.sunset.start, outlook.blueHour.sunset.end),
-                    ),
+                    tiles = blueTiles,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -512,7 +516,7 @@ fun WindowForecastCard(
 ) {
     GlassCard(shape = RoundedCornerShape(22.dp), contentPadding = PaddingValues(18.dp)) {
         Text(
-            "Window Forecast · Solar Corridor",
+            stringResource(R.string.window_forecast_title),
             color = Color.White,
             fontFamily = DisplayFamily,
             fontSize = 17.sp,
@@ -522,12 +526,12 @@ fun WindowForecastCard(
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ScoreTile(
-                label = "Weather signal",
+                label = stringResource(R.string.label_weather_signal),
                 value = "${Math.round(active.ruleFallbackProbability)}%",
                 modifier = Modifier.weight(1f),
             )
             ScoreTile(
-                label = "Intensity",
+                label = stringResource(R.string.label_intensity),
                 value = "${Math.round(active.quality)}%",
                 modifier = Modifier.weight(1f),
             )
@@ -536,12 +540,12 @@ fun WindowForecastCard(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             DataTile(
                 value = formatRange(appearance.start, appearance.end, outlook.timeZone),
-                label = "Peak Window",
+                label = stringResource(R.string.label_peak_window),
                 modifier = Modifier.weight(1f),
             )
             DataTile(
                 value = formatDuration(appearance.start, appearance.end),
-                label = "Best Duration",
+                label = stringResource(R.string.label_best_duration),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -549,12 +553,12 @@ fun WindowForecastCard(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             DataTile(
                 value = air?.usAqi?.let { "${Math.round(it)}" } ?: "--",
-                label = "Window AQI",
+                label = stringResource(R.string.label_window_aqi),
                 modifier = Modifier.weight(1f),
             )
             DataTile(
-                value = String.format(Locale.US, "%.1fkm", (activeWindow.visibility ?: 0.0) / 1000.0),
-                label = "Window Visibility",
+                value = formatDistanceKm((activeWindow.visibility ?: 0.0) / 1000.0),
+                label = stringResource(R.string.label_window_visibility),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -619,14 +623,14 @@ private fun DataTile(value: String, label: String, modifier: Modifier = Modifier
 @Composable
 fun FactorBars(factors: Factors) {
     val items = listOf(
-        "Cloud Screen" to factors.cloudScreen,
-        "Blocker Clearance" to factors.blockersClearance,
-        "Solar Corridor" to factors.solarCorridor,
-        "Color Chemistry" to factors.colorChemistry,
-        "Sun Access" to factors.sunAccess,
-        "Regional Texture" to factors.regionalTexture,
-        "Rain Clearance" to factors.rain,
-        "Visibility" to factors.visibility,
+        stringResource(R.string.factor_cloud_screen) to factors.cloudScreen,
+        stringResource(R.string.factor_blocker_clearance) to factors.blockersClearance,
+        stringResource(R.string.factor_solar_corridor) to factors.solarCorridor,
+        stringResource(R.string.factor_color_chemistry) to factors.colorChemistry,
+        stringResource(R.string.factor_sun_access) to factors.sunAccess,
+        stringResource(R.string.factor_regional_texture) to factors.regionalTexture,
+        stringResource(R.string.factor_rain_clearance) to factors.rain,
+        stringResource(R.string.factor_visibility) to factors.visibility,
     )
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items.forEach { (label, value) ->
@@ -695,7 +699,7 @@ fun TimelineCard(
         ) {
             FieldTool(
                 icon = R.drawable.ic_compass,
-                title = "Sun direction",
+                title = stringResource(R.string.sun_direction_title),
                 value = "${Math.round(sunBearing)}° ${compassLabel(sunBearing)}",
                 note = "Face this direction for the ${state.activeMode} horizon.",
                 warning = false,
@@ -703,7 +707,7 @@ fun TimelineCard(
             Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
             FieldTool(
                 icon = R.drawable.ic_cloud_rain,
-                title = "Precipitation alert",
+                title = stringResource(R.string.precip_alert_title),
                 value = "${Math.round(rainRisk)}% near the window",
                 note = if (rainRisk >= 45) {
                     "Rain may block the view; check again before leaving."
@@ -722,7 +726,7 @@ fun TimelineCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("Saved viewpoints", color = TextMuted, fontSize = 12.sp)
+                Text(stringResource(R.string.saved_viewpoints_label), color = TextMuted, fontSize = 12.sp)
                 state.viewpoints.take(4).forEach { viewpoint ->
                     Row(
                         modifier = Modifier
@@ -926,7 +930,7 @@ fun FeedbackCard(
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "RATE TONIGHT'S SUNSET",
+                    stringResource(R.string.rate_tonights_sunset),
                     color = TextSecondary,
                     fontSize = 12.sp,
                     letterSpacing = 0.7.sp,
@@ -936,7 +940,7 @@ fun FeedbackCard(
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Predicted sunset chance", color = TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.predicted_sunset_chance), color = TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 Text(
                     "${Math.round(outlook.scores.sunset.probability)}%",
                     color = Color.White,

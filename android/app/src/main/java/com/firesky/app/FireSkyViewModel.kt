@@ -12,6 +12,7 @@ import com.firesky.app.data.AccountSettings
 import com.firesky.app.data.AccountState
 import com.firesky.app.data.ApiClient
 import com.firesky.app.data.ApiException
+import com.firesky.app.data.ClockStyle
 import com.firesky.app.data.DEFAULT_PLACE
 import com.firesky.app.data.Forecast
 import com.firesky.app.data.ForecastRepository
@@ -20,6 +21,7 @@ import com.firesky.app.data.GridKey
 import com.firesky.app.data.Place
 import com.firesky.app.data.ScoredPoint
 import com.firesky.app.data.Store
+import com.firesky.app.data.UnitPrefs
 import com.firesky.app.data.Viewpoint
 import com.firesky.app.data.forecastDayKey
 import com.firesky.app.data.formatRange
@@ -28,7 +30,10 @@ import com.firesky.app.data.sunAzimuth
 import com.firesky.app.data.upcomingEvents
 import com.firesky.app.data.weatherDescription
 import com.firesky.app.data.weatherTheme
+import com.firesky.app.notifications.PushTokenManager
 import com.firesky.app.notifications.SkyAlerts
+import com.firesky.app.ui.map.HeatField
+import com.firesky.app.widget.TonightSkyWidget
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +56,17 @@ data class SearchState(
     val error: String = "",
 )
 
+data class ChaseSpotState(
+    val latitude: Double,
+    val longitude: Double,
+    val placeName: String,
+    val probability: Double,
+    val quality: Double,
+    val peakWindowLabel: String,
+    val sunBearing: Double,
+    val loading: Boolean = false,
+)
+
 data class UiState(
     val place: Place = DEFAULT_PLACE,
     val activeMode: String = "sunset",
@@ -71,6 +87,15 @@ data class UiState(
     val sunriseAlerts: Boolean = true,
     val sunsetAlerts: Boolean = true,
     val alertThreshold: Int = 70,
+    val forecastImprovedAlerts: Boolean = true,
+    val postEventFeedbackAlerts: Boolean = true,
+    val quietHoursEnabled: Boolean = false,
+    val quietHoursStart: Int = 22 * 60,
+    val quietHoursEnd: Int = 7 * 60,
+    val disabledAlertPlaceKeys: Set<String> = emptySet(),
+    val onboardingCompleted: Boolean = true,
+    val unitPrefs: UnitPrefs = UnitPrefs(),
+    val chaseSpot: ChaseSpotState? = null,
     val accountToken: String = "",
     val account: AccountState? = null,
     val accountError: String = "",
@@ -126,6 +151,19 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
             sunriseAlerts = store.sunriseAlerts,
             sunsetAlerts = store.sunsetAlerts,
             alertThreshold = store.alertThreshold,
+            forecastImprovedAlerts = store.forecastImprovedAlerts,
+            postEventFeedbackAlerts = store.postEventFeedbackAlerts,
+            quietHoursEnabled = store.quietHoursEnabled,
+            quietHoursStart = store.quietHoursStart,
+            quietHoursEnd = store.quietHoursEnd,
+            disabledAlertPlaceKeys = store.disabledAlertPlaceKeys,
+            onboardingCompleted = store.onboardingCompleted,
+            unitPrefs = UnitPrefs(
+                temperatureUnit = store.temperatureUnit,
+                distanceUnit = store.distanceUnit,
+                timeFormat = store.timeFormat,
+                languageTag = store.languageTag,
+            ),
             accountToken = store.accountToken,
             account = store.accountToken.takeIf { it.isNotBlank() }?.let { store.cachedAccount },
             viewpoints = store.viewpoints,
@@ -164,7 +202,11 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     init {
+        ClockStyle.sync(application, store)
         registerNetworkCallback()
+        viewModelScope.launch {
+            PushTokenManager.ensurePushToken(application, store)
+        }
         _state.value.accountToken.takeIf { it.isNotBlank() }?.let { acceptAccountToken(it) }
         load(_state.value.place, _state.value.activeMode)
         refreshJob = viewModelScope.launch {
@@ -304,6 +346,111 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         scheduleAlerts()
     }
 
+    fun setForecastImprovedAlerts(enabled: Boolean) {
+        store.forecastImprovedAlerts = enabled
+        _state.update { it.copy(forecastImprovedAlerts = enabled) }
+        scheduleAlerts()
+    }
+
+    fun setPostEventFeedbackAlerts(enabled: Boolean) {
+        store.postEventFeedbackAlerts = enabled
+        _state.update { it.copy(postEventFeedbackAlerts = enabled) }
+        scheduleAlerts()
+    }
+
+    fun setQuietHoursEnabled(enabled: Boolean) {
+        store.quietHoursEnabled = enabled
+        _state.update { it.copy(quietHoursEnabled = enabled) }
+    }
+
+    fun setQuietHoursRange(startMinutes: Int, endMinutes: Int) {
+        store.quietHoursStart = startMinutes
+        store.quietHoursEnd = endMinutes
+        _state.update { it.copy(quietHoursStart = startMinutes, quietHoursEnd = endMinutes) }
+    }
+
+    fun togglePlaceAlert(place: Place) {
+        val key = place.spotKey()
+        val current = _state.value.disabledAlertPlaceKeys
+        val next = if (key in current) current - key else current + key
+        store.disabledAlertPlaceKeys = next
+        _state.update { it.copy(disabledAlertPlaceKeys = next) }
+        scheduleAlerts()
+    }
+
+    fun setTemperatureUnit(unit: String) {
+        store.temperatureUnit = unit
+        ClockStyle.sync(getApplication(), store)
+        _state.update { it.copy(unitPrefs = it.unitPrefs.copy(temperatureUnit = unit)) }
+        displayedPlace?.let { p ->
+            viewModelScope.launch { TonightSkyWidget.updateFromForecast(getApplication(), p, _state.value.days) }
+        }
+    }
+
+    fun setDistanceUnit(unit: String) {
+        store.distanceUnit = unit
+        ClockStyle.sync(getApplication(), store)
+        _state.update { it.copy(unitPrefs = it.unitPrefs.copy(distanceUnit = unit)) }
+    }
+
+    fun setTimeFormat(format: String) {
+        store.timeFormat = format
+        ClockStyle.sync(getApplication(), store)
+        _state.update { it.copy(unitPrefs = it.unitPrefs.copy(timeFormat = format)) }
+    }
+
+    fun setLanguageTag(tag: String) {
+        store.languageTag = tag
+        _state.update { it.copy(unitPrefs = it.unitPrefs.copy(languageTag = tag)) }
+    }
+
+    fun completeOnboarding() {
+        store.onboardingCompleted = true
+        _state.update { it.copy(onboardingCompleted = true) }
+    }
+
+    fun reopenOnboarding() {
+        _state.update { it.copy(onboardingCompleted = false) }
+    }
+
+    fun inspectChasePoint(latitude: Double, longitude: Double) {
+        val current = _state.value
+        val mode = current.activeMode
+        val samples = current.grid.orEmpty()
+        val region = com.firesky.app.ui.map.ChaseMapRegion.from(samples) ?: return
+        if (!region.contains(latitude, longitude)) return
+        val outlook = current.selectedOutlook
+        val lats = DoubleArray(samples.size) { samples[it].latitude }
+        val lons = DoubleArray(samples.size) { samples[it].longitude }
+        val interpolatedProb = HeatField.interpolate(latitude, longitude, lats, lons, DoubleArray(samples.size) { samples[it].probability })
+        val interpolatedQual = HeatField.interpolate(latitude, longitude, lats, lons, DoubleArray(samples.size) { samples[it].quality })
+        val defaultWindow = outlook?.appearanceWindow?.get(mode)?.let {
+            formatRange(it.start, it.end, outlook.timeZone)
+        } ?: "--:--"
+        val defaultBearing = outlook?.get(mode)?.let {
+            sunAzimuth(it, latitude, longitude)
+        } ?: current.sunBearing
+        val coordLabel = String.format(Locale.US, "Spot %.2f°, %.2f°", latitude, longitude)
+
+        _state.update {
+            it.copy(
+                chaseSpot = ChaseSpotState(
+                    latitude = latitude,
+                    longitude = longitude,
+                    placeName = coordLabel,
+                    probability = interpolatedProb,
+                    quality = interpolatedQual,
+                    peakWindowLabel = defaultWindow,
+                    sunBearing = defaultBearing,
+                    loading = false,
+                ),
+            )
+        }
+
+        // Browsing and inspecting reuse the already sampled regional field.
+        // An explicit "Forecast here" action loads a new place through selectPlace.
+    }
+
     fun refresh() {
         load(_state.value.place, _state.value.activeMode, force = true)
     }
@@ -367,6 +514,7 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
                 if (seq != loadSeq) return@launch
                 recordSelectedEvent()
                 scheduleAlerts()
+                TonightSkyWidget.updateFromForecast(getApplication(), place, _state.value.days)
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -579,6 +727,7 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
                 }
                 if (localOnly.isNotEmpty() || (sync.locations.isEmpty() && favorites.isNotEmpty())) scheduleSyncPush()
                 scheduleAlerts()
+                PushTokenManager.syncRegistration(getApplication(), store, api)
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -760,6 +909,12 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         sunriseAlerts = _state.value.sunriseAlerts,
         sunsetAlerts = _state.value.sunsetAlerts,
         alertThreshold = _state.value.alertThreshold,
+        forecastImprovedAlerts = _state.value.forecastImprovedAlerts,
+        postEventFeedbackAlerts = _state.value.postEventFeedbackAlerts,
+        quietHoursEnabled = _state.value.quietHoursEnabled,
+        quietHoursStart = _state.value.quietHoursStart,
+        quietHoursEnd = _state.value.quietHoursEnd,
+        disabledAlertPlaceKeys = _state.value.disabledAlertPlaceKeys,
     )
 
     private fun pushCloudSettings() {
@@ -798,18 +953,22 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
     // ---- Viewpoints & feedback ------------------------------------------
 
     fun saveViewpoint(name: String) {
+        val place = _state.value.place
+        saveViewpointAt(name, place.latitude, place.longitude)
+    }
+
+    fun saveViewpointAt(name: String, latitude: Double, longitude: Double) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
-        val place = _state.value.place
         val viewpoint = Viewpoint(
             id = java.util.UUID.randomUUID().toString(),
             name = trimmed,
-            latitude = place.latitude,
-            longitude = place.longitude,
+            latitude = latitude,
+            longitude = longitude,
             updatedAt = System.currentTimeMillis(),
         )
         val next = (listOf(viewpoint) + _state.value.viewpoints.filterNot {
-            abs(it.latitude - place.latitude) < 0.0001 && abs(it.longitude - place.longitude) < 0.0001
+            abs(it.latitude - latitude) < 0.0001 && abs(it.longitude - longitude) < 0.0001
         }).take(30)
         store.viewpoints = next
         _state.update { it.copy(viewpoints = next) }
