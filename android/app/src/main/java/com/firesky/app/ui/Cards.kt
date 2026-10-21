@@ -925,7 +925,7 @@ fun FeedbackCard(
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "DAILY SUNSET FEEDBACK",
+                    "RATE TONIGHT'S SUNSET",
                     color = TextSecondary,
                     fontSize = 12.sp,
                     letterSpacing = 0.7.sp,
@@ -935,7 +935,7 @@ fun FeedbackCard(
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Predicted chance", color = TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("Predicted sunset chance", color = TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 Text(
                     "${Math.round(outlook.scores.sunset.probability)}%",
                     color = Color.White,

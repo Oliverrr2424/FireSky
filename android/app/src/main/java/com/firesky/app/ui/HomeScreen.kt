@@ -812,7 +812,7 @@ private fun SourceLine() {
         LucideIcon(R.drawable.ic_check, null, tint = TextMuted, size = 14.dp)
         Spacer(Modifier.width(6.dp))
         Text(
-            text = "WEATHER AND AIR QUALITY FORECAST · TODAY ONLY.",
+            text = "WEATHER AND AIR QUALITY FORECAST · 7-DAY OUTLOOK",
             color = TextMuted,
             fontSize = 11.sp,
             letterSpacing = 1.sp,
