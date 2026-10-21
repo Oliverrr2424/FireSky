@@ -210,7 +210,8 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun selectPlace(place: Place) {
+    /** [source] is "location" for the locate button, "search" for everything else (telemetry only). */
+    fun selectPlace(place: Place, source: String = "search") {
         _state.update {
             it.copy(
                 place = place,
@@ -221,7 +222,7 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         userSelectedDay = false
         api.telemetry(
             "location_selected",
-            JSONObject().put("source", if (place.name == "Current Location") "location" else "search"),
+            JSONObject().put("source", source),
         )
         load(place, _state.value.activeMode)
     }
@@ -732,15 +733,18 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
 
     fun deleteAccount(onDone: (String?) -> Unit) {
         val token = _state.value.accountToken
-        if (token.isBlank()) return
+        if (token.isBlank() || _state.value.accountBusy) return
+        _state.update { it.copy(accountBusy = true, accountError = "") }
         viewModelScope.launch {
             try {
                 api.deleteAccount(token)
+                _state.update { it.copy(accountBusy = false) }
                 signOut()
                 onDone(null)
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Exception) {
+                _state.update { it.copy(accountBusy = false) }
                 onDone(error.message ?: "Unable to delete account")
             }
         }

@@ -152,7 +152,7 @@ fun FireSkyApp(viewModel: FireSkyViewModel) {
             try {
                 val location = LocationHelper.getCurrentLocation(context)
                 when {
-                    location != null -> viewModel.selectPlace(LocationHelper.placeFor(context, location))
+                    location != null -> viewModel.selectPlace(LocationHelper.placeFor(context, location), source = "location")
                     !LocationHelper.isLocationEnabled(context) -> showMessage(
                         "Location is turned off. Turn it on or search for a city.",
                         Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS),
