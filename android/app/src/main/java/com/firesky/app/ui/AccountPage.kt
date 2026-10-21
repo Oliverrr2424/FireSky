@@ -31,6 +31,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -46,18 +47,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -90,7 +97,15 @@ data class SettingsPatch(
     val sunsetAlerts: Boolean? = null,
 )
 
+/** Same rule the server applies in functions/_shared/account.js normalEmail. */
+private val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+private const val MIN_PASSWORD_LENGTH = 12
 private val ErrorText = Color(0xFFFFD2CF)
+
+private fun isValidEmail(value: String): Boolean {
+    val email = value.trim()
+    return email.length <= 254 && EMAIL_PATTERN.matches(email)
+}
 
 @Composable
 fun AccountPage(
@@ -275,7 +290,7 @@ private fun AccountContent(
     ) {
         if (user != null) {
             AccountIdentitySection(state, user, compact)
-            ProfileSection(user, compact, onSaveProfile)
+            ProfileSection(state, user, compact, onSaveProfile)
             AlertsSection(state, compact, notificationsActive, notificationsBlocked, onOpenNotificationSettings, onSettingsChanged)
             SecuritySection(state, user, compact, onSignOut, onChangePassword, onDelete)
         } else {
@@ -407,9 +422,9 @@ private fun SyncStatus(state: UiState, compact: Boolean) {
 }
 
 @Composable
-private fun ProfileSection(user: AccountUser, compact: Boolean, onSaveProfile: (String) -> Unit) {
+private fun ProfileSection(state: UiState, user: AccountUser, compact: Boolean, onSaveProfile: (String) -> Unit) {
     var profileName by remember(user.displayName) { mutableStateOf(user.displayName) }
-    var saving by remember { mutableStateOf(false) }
+    val saving = state.accountBusy
     AccountSection(compact) {
         SectionHeading("Profile", "How your name appears in FireSky.")
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -418,15 +433,13 @@ private fun ProfileSection(user: AccountUser, compact: Boolean, onSaveProfile: (
                 value = profileName,
                 onValueChange = { profileName = it },
                 placeholder = "Your name",
+                contentType = ContentType.PersonFullName,
             )
             AccountPillButton(
                 text = if (saving) "Saving..." else "Save profile",
-                onClick = {
-                    saving = true
-                    onSaveProfile(profileName)
-                    saving = false
-                },
+                onClick = { onSaveProfile(profileName.trim()) },
                 modifier = if (compact) Modifier.fillMaxWidth() else Modifier,
+                enabled = !saving && profileName.isNotBlank(),
             )
         }
     }
@@ -547,8 +560,49 @@ private fun SecuritySection(
 ) {
     var currentPassword by remember { mutableStateOf("") }
     var nextPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var attempted by remember { mutableStateOf(false) }
+    var changing by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
+    var noticeIsError by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+
+    val currentError = if (attempted && currentPassword.isEmpty()) "Enter your current password." else null
+    val nextError = if (attempted && nextPassword.length < MIN_PASSWORD_LENGTH) {
+        "Use at least $MIN_PASSWORD_LENGTH characters."
+    } else {
+        null
+    }
+    val confirmError = when {
+        confirmPassword.isNotEmpty() && confirmPassword != nextPassword &&
+            (attempted || confirmPassword.length >= nextPassword.length) -> "Passwords don't match."
+        attempted && confirmPassword.isEmpty() -> "Re-enter the new password."
+        else -> null
+    }
+    val busy = changing || state.accountBusy
+
+    fun submitPasswordChange() {
+        if (busy) return
+        attempted = true
+        notice = ""
+        if (currentPassword.isEmpty() || nextPassword.length < MIN_PASSWORD_LENGTH || confirmPassword != nextPassword) return
+        changing = true
+        onChangePassword(currentPassword, nextPassword) { error ->
+            changing = false
+            if (error == null) {
+                currentPassword = ""
+                nextPassword = ""
+                confirmPassword = ""
+                attempted = false
+                notice = "Password updated"
+                noticeIsError = false
+            } else {
+                notice = error
+                noticeIsError = true
+            }
+        }
+    }
+
     AccountSection(compact) {
         SectionHeading("Sign-in and security", "Manage how you access your account.")
         if (user.hasPassword) {
@@ -559,6 +613,9 @@ private fun SecuritySection(
                     onValueChange = { currentPassword = it },
                     placeholder = "",
                     password = true,
+                    contentType = ContentType.Password,
+                    error = currentError,
+                    imeAction = ImeAction.Next,
                 )
                 AccountField(
                     label = "New password",
@@ -566,22 +623,27 @@ private fun SecuritySection(
                     onValueChange = { nextPassword = it },
                     placeholder = "",
                     password = true,
-                    helper = "Use at least 12 characters.",
+                    helper = "Use at least $MIN_PASSWORD_LENGTH characters.",
+                    contentType = ContentType.NewPassword,
+                    error = nextError,
+                    imeAction = ImeAction.Next,
+                )
+                AccountField(
+                    label = "Confirm new password",
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it },
+                    placeholder = "",
+                    password = true,
+                    contentType = ContentType.NewPassword,
+                    error = confirmError,
+                    imeAction = ImeAction.Done,
+                    onImeAction = ::submitPasswordChange,
                 )
                 AccountPillButton(
-                    text = "Update password",
-                    onClick = {
-                        onChangePassword(currentPassword, nextPassword) { error ->
-                            if (error == null) {
-                                currentPassword = ""
-                                nextPassword = ""
-                                notice = "Password updated"
-                            } else {
-                                notice = error
-                            }
-                        }
-                    },
+                    text = if (changing) "Updating..." else "Update password",
+                    onClick = ::submitPasswordChange,
                     modifier = if (compact) Modifier.fillMaxWidth() else Modifier,
+                    enabled = !busy,
                 )
             }
         } else {
@@ -612,7 +674,7 @@ private fun SecuritySection(
         }
         if (notice.isNotBlank()) {
             Spacer(Modifier.height(12.dp))
-            AccountNotice(notice, error = false)
+            AccountNotice(notice, error = noticeIsError)
         }
         if (state.accountError.isNotBlank()) {
             Spacer(Modifier.height(12.dp))
@@ -626,24 +688,24 @@ private fun SecuritySection(
             title = { Text("Delete FireSky account?") },
             text = { Text("This removes your cloud-synced locations, viewpoints and feedback. This cannot be undone.") },
             confirmButton = {
-                Text(
-                    "Delete",
-                    color = Color(0xFFFFD2CF),
-                    modifier = Modifier
-                        .clickable {
-                            confirmDelete = false
-                            onDelete { error -> if (error != null) notice = error }
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        onDelete { error ->
+                            if (error != null) {
+                                notice = error
+                                noticeIsError = true
+                            }
                         }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
+                    },
+                ) {
+                    Text("Delete", color = ErrorText)
+                }
             },
             dismissButton = {
-                Text(
-                    "Cancel",
-                    modifier = Modifier
-                        .clickable { confirmDelete = false }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text("Cancel")
+                }
             },
         )
     }
@@ -660,6 +722,32 @@ private fun SignInSection(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
+    var attempted by remember { mutableStateOf(false) }
+    var emailVisited by remember { mutableStateOf(false) }
+    val signup = authMode == "signup"
+    val busy = state.accountBusy
+
+    val emailValid = isValidEmail(email)
+    val emailError = when {
+        email.isBlank() -> if (attempted) "Enter your email address." else null
+        !emailValid && (attempted || emailVisited) -> "Enter a valid email address, like name@example.com."
+        else -> null
+    }
+    val passwordError = when {
+        !attempted -> null
+        password.isEmpty() -> "Enter your password."
+        password.length < MIN_PASSWORD_LENGTH ->
+            if (signup) "Use at least $MIN_PASSWORD_LENGTH characters." else "FireSky passwords have at least $MIN_PASSWORD_LENGTH characters."
+        else -> null
+    }
+
+    fun submit() {
+        if (busy) return
+        attempted = true
+        if (!emailValid || password.length < MIN_PASSWORD_LENGTH) return
+        onSignInPassword(authMode, email.trim(), password, displayName.trim().takeIf { it.isNotBlank() })
+    }
+
     AccountSection(compact, Modifier.widthIn(max = 570.dp)) {
         AccountPillButton(
             text = "Continue with Google",
@@ -667,6 +755,7 @@ private fun SignInSection(
             onClick = onGoogle,
             modifier = Modifier.fillMaxWidth(),
             google = true,
+            enabled = !busy,
         )
         Spacer(Modifier.height(22.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -676,12 +765,14 @@ private fun SignInSection(
         }
         Spacer(Modifier.height(22.dp))
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (authMode == "signup") {
+            if (signup) {
                 AccountField(
                     label = "Display name",
                     value = displayName,
                     onValueChange = { displayName = it },
                     placeholder = "",
+                    contentType = ContentType.PersonFullName,
+                    imeAction = ImeAction.Next,
                 )
             }
             AccountField(
@@ -690,6 +781,10 @@ private fun SignInSection(
                 onValueChange = { email = it },
                 placeholder = "",
                 keyboardType = KeyboardType.Email,
+                contentType = if (signup) ContentType.NewUsername + ContentType.EmailAddress else ContentType.Username + ContentType.EmailAddress,
+                error = emailError,
+                imeAction = ImeAction.Next,
+                onFocusLost = { emailVisited = true },
             )
             AccountField(
                 label = "Password",
@@ -697,30 +792,37 @@ private fun SignInSection(
                 onValueChange = { password = it },
                 placeholder = "",
                 password = true,
-                helper = if (authMode == "signup") "Use at least 12 characters." else "Enter your FireSky password.",
+                helper = if (signup) "Use at least $MIN_PASSWORD_LENGTH characters." else "Enter your FireSky password.",
+                contentType = if (signup) ContentType.NewPassword else ContentType.Password,
+                error = passwordError,
+                imeAction = ImeAction.Done,
+                onImeAction = ::submit,
             )
             AccountPillButton(
                 text = when {
-                    state.accountBusy -> "Please wait..."
-                    authMode == "signup" -> "Create account"
+                    busy -> "Please wait..."
+                    signup -> "Create account"
                     else -> "Sign in with email"
                 },
-                onClick = {
-                    onSignInPassword(authMode, email, password, displayName.takeIf { it.isNotBlank() })
-                },
+                onClick = ::submit,
                 modifier = Modifier.fillMaxWidth(),
+                enabled = !busy,
             )
         }
         Spacer(Modifier.height(12.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { authMode = if (authMode == "signup") "login" else "signup" }
+                .heightIn(min = 48.dp)
+                .clickable(role = Role.Button) {
+                    authMode = if (signup) "login" else "signup"
+                    attempted = false
+                }
                 .padding(vertical = 8.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                if (authMode == "signup") "Already have an account? Sign in" else "New to FireSky? Create an account",
+                if (signup) "Already have an account? Sign in" else "New to FireSky? Create an account",
                 color = TextSecondary,
                 fontSize = 13.sp,
             )
@@ -741,29 +843,55 @@ private fun AccountField(
     password: Boolean = false,
     helper: String? = null,
     keyboardType: KeyboardType = KeyboardType.Text,
+    contentType: ContentType? = null,
+    error: String? = null,
+    imeAction: ImeAction = ImeAction.Default,
+    onImeAction: (() -> Unit)? = null,
+    onFocusLost: (() -> Unit)? = null,
 ) {
+    var revealed by remember { mutableStateOf(false) }
+    var hadFocus by remember { mutableStateOf(false) }
+    val borderColor = if (error != null) Color(0xB3FF9D96) else Color(0x1FFFFFFF)
     Column {
         Text(label, color = TextSecondary, fontSize = 13.sp)
         Spacer(Modifier.height(7.dp))
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .heightIn(min = 48.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(SurfaceControl)
-                .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(16.dp))
-                .padding(horizontal = 14.dp),
-            contentAlignment = Alignment.CenterStart,
+                .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+                .padding(start = 14.dp, end = if (password) 0.dp else 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 12.dp)
+                    .onFocusChanged { focus ->
+                        if (focus.isFocused) {
+                            hadFocus = true
+                        } else if (hadFocus) {
+                            onFocusLost?.invoke()
+                        }
+                    }
+                    .semantics {
+                        if (contentType != null) this.contentType = contentType
+                        if (error != null) this.error(error)
+                    },
                 singleLine = true,
                 textStyle = TextStyle(fontFamily = UiFamily, fontSize = 15.sp, color = TextPrimary),
                 cursorBrush = SolidColor(Color.White),
-                visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                visualTransformation = if (password && !revealed) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (password) KeyboardType.Password else keyboardType,
+                    imeAction = imeAction,
+                    autoCorrectEnabled = !(password || keyboardType == KeyboardType.Email),
+                ),
+                keyboardActions = KeyboardActions(onDone = { onImeAction?.invoke() }),
                 decorationBox = { inner ->
                     if (value.isEmpty() && placeholder.isNotEmpty()) {
                         Text(placeholder, color = TextMuted, fontSize = 15.sp, maxLines = 1)
@@ -771,8 +899,20 @@ private fun AccountField(
                     inner()
                 },
             )
+            if (password) {
+                ControlIconButton(
+                    painter = androidx.compose.ui.res.painterResource(if (revealed) R.drawable.ic_eye_off else R.drawable.ic_eye),
+                    contentDescription = if (revealed) "Hide password" else "Show password",
+                    onClick = { revealed = !revealed },
+                    size = 34.dp,
+                    iconSize = 17.dp,
+                )
+            }
         }
-        if (helper != null) {
+        if (error != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(error, color = ErrorText, fontSize = 12.sp, lineHeight = 16.sp)
+        } else if (helper != null) {
             Spacer(Modifier.height(6.dp))
             Text(helper, color = TextMuted, fontSize = 11.sp)
         }
@@ -883,10 +1023,12 @@ private fun AccountPillButton(
     modifier: Modifier = Modifier,
     destructive: Boolean = false,
     google: Boolean = false,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = modifier
-            .height(44.dp)
+            .heightIn(min = 48.dp)
+            .alpha(if (enabled) 1f else 0.55f)
             .clip(CircleShape)
             .background(
                 when {
@@ -895,8 +1037,8 @@ private fun AccountPillButton(
                     else -> SurfaceInset
                 },
             )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp),
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
@@ -904,14 +1046,14 @@ private fun AccountPillButton(
             LucideIcon(
                 icon,
                 null,
-                tint = if (destructive) Color(0xFFFFD2CF) else TextPrimary,
+                tint = if (destructive) ErrorText else TextPrimary,
                 size = 17.dp,
             )
             Spacer(Modifier.width(8.dp))
         }
         Text(
             text,
-            color = if (destructive) Color(0xFFFFD2CF) else TextPrimary,
+            color = if (destructive) ErrorText else TextPrimary,
             fontSize = 15.sp,
             fontWeight = FontWeight.W600,
             maxLines = 1,
