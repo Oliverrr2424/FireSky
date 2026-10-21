@@ -1,6 +1,6 @@
 # Regional forecast history v1
 
-Implemented on 2026-10-21. Deployment is a separate step; local implementation does not start sampling.
+Implemented and deployed on 2026-10-21. Release source: master at 9d788d0. Production database migrations, both Pages sites and the scheduled collector are deployed; see docs/mobile/release-2026-10-21.md.
 
 ## Product contract
 
@@ -55,4 +55,4 @@ Production rollout order:
 4. Release/install Android after API availability. Watch claimed/complete/failed counts, reserved units per UTC day and total upstream 429s.
 5. First coverage arrives within three hours; two historical samples require the next cycle. Do not prefill artificial points.
 
-No remote migrations, production Pages deployment, or cron activation are implied by the local build.
+The local build alone does not activate sampling. For this release, remote deployment was explicitly performed after the user's release request.
