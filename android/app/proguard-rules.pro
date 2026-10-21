@@ -1,21 +1,17 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
+# R8 configuration for the native release build.
 #
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# The libraries already ship consumer rules that cover their reflective entry
+# points, so this file adds no blanket keeps:
+#   * MapLibre 13.7.1 keeps its native/Gson entry points, enums and geojson.
+#   * OkHttp 4.12.0 keeps PublicSuffixDatabase and silences optional platforms.
+#   * WorkManager 2.10.1 keeps ListenableWorker subclasses, their constructors
+#     and their class names, which is what ForecastRefreshWorker relies on.
+#   * Activities and receivers declared in AndroidManifest.xml are kept by AGP.
+#
+# Checked against build/outputs/mapping/release/seeds.txt: MainActivity,
+# FireSkyApplication, SkyAlertReceiver, BootReceiver and ForecastRefreshWorker
+# are seeded with their constructors, while app data classes are renamed.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep stack traces readable in Play Console; mapping.txt still deobfuscates.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

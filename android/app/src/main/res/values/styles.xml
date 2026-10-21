@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <style name="Theme.FireSky" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/firesky_backdrop</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <!-- Ignored below API 27; declared here to keep the theme in one place. -->
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
         <item name="android:fontFamily">@font/inter_400</item>
     </style>
 
