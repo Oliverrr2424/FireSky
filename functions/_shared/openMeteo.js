@@ -281,11 +281,18 @@ export function makeGridUrls(place, batchSize = 75) {
   return urls;
 }
 
-export function makeGeocodeUrl(query) {
+const GEOCODE_LANGUAGES = ['en', 'zh', 'fr', 'es'];
+
+export function normalizeGeocodeLanguage(language) {
+  const base = String(language ?? '').trim().toLowerCase().split(/[-_]/)[0];
+  return GEOCODE_LANGUAGES.includes(base) ? base : 'en';
+}
+
+export function makeGeocodeUrl(query, language = 'en') {
   const params = new URLSearchParams({
     name: query,
     count: '6',
-    language: 'zh',
+    language: normalizeGeocodeLanguage(language),
     format: 'json'
   });
   return `https://geocoding-api.open-meteo.com/v1/search?${params}`;
