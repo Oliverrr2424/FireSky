@@ -456,20 +456,32 @@ private fun enhanceRegionalScores(points: List<ScoredPoint>, mode: String): List
         )
     }
 
-fun buildGrid(payload: JSONArray, place: Place, mode: String): List<ScoredPoint> {
+private const val GRID_EVENT_MATCH_MS = 3L * 60L * 60L * 1000L
+
+/**
+ * Scores the regional grid for one event. With [event], each sample uses its
+ * own sunrise/sunset nearest that instant, so a grid cached on a different day
+ * (or one that doesn't reach tomorrow) yields an empty list instead of quietly
+ * scoring the wrong morning or evening.
+ */
+fun buildGrid(payload: JSONArray, place: Place, mode: String, event: Instant? = null): List<ScoredPoint> {
     val samples = createGridPlaces(place)
     val rows = min(payload.length(), samples.size)
     val points = (0 until rows).mapNotNull { index ->
         val item = payload.optJSONObject(index) ?: return@mapNotNull null
         val utcOffsetSeconds = item.optInt("utc_offset_seconds", 0)
         val daily = item.optJSONObject("daily")
-        val target = if (mode == "sunrise") {
-            localIsoToUtcDate(daily.stringList("sunrise").firstOrNull(), utcOffsetSeconds)
+        val candidates = daily.stringList(if (mode == "sunrise") "sunrise" else "sunset")
+            .mapNotNull { localIsoToUtcDate(it, utcOffsetSeconds) }
+        val target = if (event == null) {
+            candidates.firstOrNull()
         } else {
-            localIsoToUtcDate(daily.stringList("sunset").firstOrNull(), utcOffsetSeconds)
-        }
+            candidates.minByOrNull { abs(it.toEpochMilli() - event.toEpochMilli()) }
+                ?.takeIf { abs(it.toEpochMilli() - event.toEpochMilli()) <= GRID_EVENT_MATCH_MS }
+        } ?: return@mapNotNull null
         val hourly = HourlyWeather(item.optJSONObject("hourly"))
-        val window = pickWindow(hourly, target ?: Instant.now(), mode, utcOffsetSeconds)
+        if (!hourlyCovers(hourly, target, utcOffsetSeconds)) return@mapNotNull null
+        val window = pickWindow(hourly, target, mode, utcOffsetSeconds)
         val score = computeWindowScore(window, AirSnapshot(), mode)
         val sample = samples[index]
         ScoredPoint(
@@ -477,21 +489,39 @@ fun buildGrid(payload: JSONArray, place: Place, mode: String): List<ScoredPoint>
             latitude = sample.latitude,
             longitude = sample.longitude,
             window = window,
-            sunBearing = target?.let { sunAzimuth(it, sample.latitude, sample.longitude) }
-                ?: if (mode == "sunset") 270.0 else 90.0,
+            sunBearing = sunAzimuth(target, sample.latitude, sample.longitude),
             probability = score.probability,
             quality = score.quality,
             factors = score.factors,
             confidence = score.confidence,
         )
     }
+    // A partial grid would skew the corridor search toward whichever samples survived.
+    if (points.size < rows / 2) return emptyList()
     return enhanceRegionalScores(points, mode)
 }
 
-fun applyRegionalContextToForecast(forecast: Forecast, regionalPoints: List<ScoredPoint>, place: Place): Forecast {
-    if (regionalPoints.isEmpty()) return forecast
+private fun hourlyCovers(hourly: HourlyWeather, target: Instant, utcOffsetSeconds: Int): Boolean {
+    val first = localIsoToUtcDate(hourly.time.firstOrNull(), utcOffsetSeconds) ?: return false
+    val last = localIsoToUtcDate(hourly.time.lastOrNull(), utcOffsetSeconds) ?: return false
+    val slack = 90L * 60L * 1000L
+    return target.toEpochMilli() >= first.toEpochMilli() - slack && target.toEpochMilli() <= last.toEpochMilli() + slack
+}
+
+/**
+ * Re-scores [forecast] with the regional cloud field. Each mode only uses the
+ * grid built for that same event: a sunrise grid describes morning clouds and
+ * must never shape the sunset score.
+ */
+fun applyRegionalContextToForecast(
+    forecast: Forecast,
+    gridsByMode: Map<String, List<ScoredPoint>>,
+    place: Place,
+): Forecast {
     var scores = forecast.scores
     listOf("sunrise", "sunset").forEach { mode ->
+        val regionalPoints = gridsByMode[mode].orEmpty()
+        if (regionalPoints.isEmpty()) return@forEach
         val target = forecast[mode]
         val point = ScoredPoint(
             sampleId = -1,
@@ -512,7 +542,8 @@ fun applyRegionalContextToForecast(forecast: Forecast, regionalPoints: List<Scor
                 mode,
                 context,
             ),
-            if (forecast.ml?.status == "ok") forecast.ml?.scores?.get(mode) else forecast.scores[mode].ml,
+            // The model only scores today's events (see buildForecast).
+            if (forecast.dayIndex == 0 && forecast.ml?.status == "ok") forecast.ml?.scores?.get(mode) else null,
         )
         scores = if (mode == "sunrise") scores.copy(sunrise = score) else scores.copy(sunset = score)
     }
@@ -588,6 +619,29 @@ fun compassLabel(degrees: Double): String {
     val names = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
     return names[Math.round((((degrees % 360.0) + 360.0) % 360.0) / 45.0).toInt() % 8]
 }
+
+data class ForecastEvent(val dayIndex: Int, val mode: String, val at: Instant)
+
+private const val EVENT_RELEVANCE_MS = 60L * 60L * 1000L
+
+/**
+ * Sunrise and sunset events across [days] in time order, skipping any whose
+ * peak-colour window closed more than an hour before [now].
+ */
+fun upcomingEvents(days: List<Forecast>, now: Instant = Instant.now()): List<ForecastEvent> =
+    days.withIndex().flatMap { (index, day) ->
+        listOf("sunrise", "sunset").map { mode -> ForecastEvent(index, mode, day[mode]) to day }
+    }
+        .filter { (event, day) ->
+            val closesAt = day.appearanceWindow[event.mode].end ?: event.at
+            closesAt.toEpochMilli() + EVENT_RELEVANCE_MS >= now.toEpochMilli()
+        }
+        .map { it.first }
+        .sortedBy { it.at }
+
+/** The event the home screen should lead with: tonight's sunset, or tomorrow's sunrise after dark. */
+fun nextForecastEvent(days: List<Forecast>, now: Instant = Instant.now()): ForecastEvent? =
+    upcomingEvents(days, now).firstOrNull()
 
 fun preferredForecastMode(forecast: Forecast): String {
     val hour = 60L * 60L * 1000L

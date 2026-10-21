@@ -74,6 +74,7 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-runtime-compose:${rootProject.ext.androidxLifecycleVersion}"
     implementation "androidx.lifecycle:lifecycle-viewmodel-compose:${rootProject.ext.androidxLifecycleVersion}"
     implementation "androidx.browser:browser:${rootProject.ext.browserVersion}"
+    implementation "androidx.work:work-runtime-ktx:${rootProject.ext.workVersion}"
     implementation "org.maplibre.gl:android-sdk-opengl:${rootProject.ext.maplibreVersion}"
     implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${rootProject.ext.coroutinesVersion}"
@@ -81,6 +82,7 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
     testImplementation "junit:junit:${rootProject.ext.junitVersion}"
+    testImplementation "org.json:json:20240303"
     androidTestImplementation "androidx.test.ext:junit:${rootProject.ext.androidxJunitVersion}"
     androidTestImplementation "androidx.test.espresso:espresso-core:${rootProject.ext.androidxEspressoCoreVersion}"
     debugImplementation 'androidx.compose.ui:ui-tooling'

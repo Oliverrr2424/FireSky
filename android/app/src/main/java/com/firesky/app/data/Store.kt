@@ -12,13 +12,104 @@ class Store(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("firesky_native", Context.MODE_PRIVATE)
     private val cacheDir = File(context.cacheDir, "firesky-json").apply { mkdirs() }
+    private val secure = SecureTokenStore(context)
 
     var accountToken: String
-        get() = prefs.getString(KEY_ACCOUNT_TOKEN, "") ?: ""
+        get() {
+            // One-time move of tokens saved in plain text by earlier builds.
+            prefs.getString(KEY_ACCOUNT_TOKEN, null)?.let { legacy ->
+                secure.write(legacy)
+                prefs.edit().remove(KEY_ACCOUNT_TOKEN).apply()
+            }
+            return secure.read()
+        }
         set(value) {
-            prefs.edit().apply {
-                if (value.isBlank()) remove(KEY_ACCOUNT_TOKEN) else putString(KEY_ACCOUNT_TOKEN, value)
-            }.apply()
+            prefs.edit().remove(KEY_ACCOUNT_TOKEN).apply()
+            secure.write(value)
+        }
+
+    /** PKCE verifier for a Google sign-in in flight; survives the app being killed while the browser is open. */
+    var pendingAuthVerifier: String
+        get() = prefs.getString(KEY_AUTH_VERIFIER, "") ?: ""
+        set(value) = prefs.edit().apply {
+            if (value.isBlank()) remove(KEY_AUTH_VERIFIER) else putString(KEY_AUTH_VERIFIER, value)
+        }.apply()
+
+    var lastPlace: Place?
+        get() = try {
+            prefs.getString(KEY_LAST_PLACE, null)?.let { Place.fromJson(JSONObject(it)) }
+        } catch (_: Exception) {
+            null
+        }
+        set(value) = prefs.edit().apply {
+            if (value == null) remove(KEY_LAST_PLACE) else putString(KEY_LAST_PLACE, value.toJson().toString())
+        }.apply()
+
+    /** Last account fetched from the server, so a signed-in person stays signed in while offline. */
+    var cachedAccount: AccountState?
+        get() = try {
+            prefs.getString(KEY_CACHED_ACCOUNT, null)?.let { raw ->
+                val json = JSONObject(raw)
+                val user = json.getJSONObject("user")
+                val settings = json.getJSONObject("settings")
+                AccountState(
+                    user = AccountUser(
+                        id = user.optString("id"),
+                        displayName = user.optString("displayName", "FireSky user"),
+                        email = user.optNullableString("email"),
+                        avatarUrl = user.optNullableString("avatarUrl"),
+                        hasPassword = user.optBoolean("hasPassword", false),
+                    ),
+                    settings = AccountSettings(
+                        notificationsEnabled = settings.optBoolean("notificationsEnabled", true),
+                        alertLeadMinutes = settings.optInt("alertLeadMinutes", 60),
+                        sunriseAlerts = settings.optBoolean("sunriseAlerts", true),
+                        sunsetAlerts = settings.optBoolean("sunsetAlerts", true),
+                        alertThreshold = settings.optInt("alertThreshold", 70),
+                    ),
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
+        set(value) {
+            if (value == null) {
+                prefs.edit().remove(KEY_CACHED_ACCOUNT).apply()
+                return
+            }
+            val json = JSONObject()
+                .put(
+                    "user",
+                    JSONObject()
+                        .put("id", value.user.id)
+                        .put("displayName", value.user.displayName)
+                        .put("email", value.user.email ?: JSONObject.NULL)
+                        .put("avatarUrl", value.user.avatarUrl ?: JSONObject.NULL)
+                        .put("hasPassword", value.user.hasPassword),
+                )
+                .put(
+                    "settings",
+                    JSONObject()
+                        .put("notificationsEnabled", value.settings.notificationsEnabled)
+                        .put("alertLeadMinutes", value.settings.alertLeadMinutes)
+                        .put("sunriseAlerts", value.settings.sunriseAlerts)
+                        .put("sunsetAlerts", value.settings.sunsetAlerts)
+                        .put("alertThreshold", value.settings.alertThreshold),
+                )
+            prefs.edit().putString(KEY_CACHED_ACCOUNT, json.toString()).apply()
+        }
+
+    var viewpoints: List<Viewpoint>
+        get() = try {
+            val array = JSONArray(prefs.getString(KEY_VIEWPOINTS, "[]") ?: "[]")
+            List(array.length()) { index -> Viewpoint.fromJson(array.getJSONObject(index)) }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        set(value) {
+            val array = JSONArray()
+            value.take(30).forEach { array.put(it.toJson()) }
+            prefs.edit().putString(KEY_VIEWPOINTS, array.toString()).apply()
         }
 
     val installationId: String
@@ -119,5 +210,9 @@ class Store(context: Context) {
         private const val KEY_FAVORITES = "favorites"
         private const val KEY_FEEDBACK = "feedback"
         private const val KEY_SNAPSHOTS = "snapshots"
+        private const val KEY_AUTH_VERIFIER = "auth_verifier"
+        private const val KEY_LAST_PLACE = "last_place"
+        private const val KEY_VIEWPOINTS = "viewpoints"
+        private const val KEY_CACHED_ACCOUNT = "cached_account"
     }
 }

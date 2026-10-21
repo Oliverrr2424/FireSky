@@ -20,6 +20,11 @@ import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.UnknownHostException
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -68,10 +73,10 @@ class ApiClient(private val store: Store) {
         return try {
             val raw = requestRaw(
                 "${baseUrl}/api/forecast?lat=${place.latitude}&lon=${place.longitude}",
-                "Forecast",
+                "the forecast",
                 REQUEST_TIMEOUT_MS,
             )
-            val bundle = parseBundle(raw) ?: throw ApiException("Forecast response was incomplete")
+            val bundle = parseBundle(raw) ?: throw ApiException("The forecast came back incomplete. Try again in a moment.", true)
             store.cacheWrite(key, raw)
             bundle
         } catch (error: Exception) {
@@ -80,41 +85,41 @@ class ApiClient(private val store: Store) {
         }
     }
 
-    suspend fun fetchGrid(place: Place, mode: String, force: Boolean = false): List<ScoredPoint> {
+    /** Raw regional grid rows; callers score them per event with [buildGrid]. */
+    suspend fun fetchGridPayload(place: Place, force: Boolean = false): JSONArray {
         val key = cacheKey("grid", place)
         if (!force) {
             store.cacheRead(key, CACHE_TTL_MS)?.let { raw ->
-                runCatching { buildGrid(JSONArray(raw), place, mode) }.getOrNull()?.let { return it }
+                runCatching { JSONArray(raw) }.getOrNull()?.let { return it }
             }
         }
         return try {
             val raw = requestRaw(
                 "${baseUrl}/api/grid?lat=${place.latitude}&lon=${place.longitude}",
-                "Regional grid",
+                "the regional map",
                 GRID_REQUEST_TIMEOUT_MS,
                 gridClient,
             )
-            val grid = buildGrid(JSONArray(raw), place, mode)
+            val payload = JSONArray(raw)
             store.cacheWrite(key, raw)
-            grid
+            payload
         } catch (error: Exception) {
-            val stale = store.cacheRead(key, STALE_TTL_MS)?.let { raw ->
-                runCatching { buildGrid(JSONArray(raw), place, mode) }.getOrNull()
-            }
-            stale ?: throw error
+            store.cacheRead(key, STALE_TTL_MS)?.let { raw -> runCatching { JSONArray(raw) }.getOrNull() }
+                ?: throw error
         }
     }
 
-    suspend fun geocode(query: String): List<Place> {
+    suspend fun geocode(query: String, language: String = Locale.getDefault().language): List<Place> {
         val normalized = query.trim()
         if (normalized.length < 2) return emptyList()
-        val key = "firesky:v7:geocode:${normalized.lowercase()}"
+        val lang = language.lowercase(Locale.US).takeIf { it in GEOCODE_LANGUAGES } ?: "en"
+        val key = "firesky:v8:geocode:$lang:${normalized.lowercase(Locale.US)}"
         store.cacheRead(key, GEOCODE_CACHE_TTL_MS)?.let { raw ->
             return parsePlaces(JSONArray(raw))
         }
         val raw = requestRaw(
-            "${baseUrl}/api/geocode?q=${java.net.URLEncoder.encode(normalized, "UTF-8")}",
-            "Location search",
+            "${baseUrl}/api/geocode?q=${java.net.URLEncoder.encode(normalized, "UTF-8")}&lang=$lang",
+            "location search",
             REQUEST_TIMEOUT_MS,
         )
         store.cacheWrite(key, raw)
@@ -173,10 +178,7 @@ class ApiClient(private val store: Store) {
                 val response = httpClient.newCall(Request.Builder().url(url).get().build()).await()
                 response.use { result ->
                     if (!result.isSuccessful) {
-                        val retryAfter = result.header("Retry-After")
-                        val suffix = if (retryAfter != null) "; retry after ${retryAfter}s" else ""
-                        val retryable = result.code in RETRYABLE_STATUS_CODES
-                        throw ApiException("$label request failed (${result.code}$suffix)", retryable, result.code)
+                        throw httpError(label, result.code)
                     }
                     val body = result.body?.string() ?: ""
                     telemetry(
@@ -189,15 +191,9 @@ class ApiClient(private val store: Store) {
                     return body
                 }
             } catch (error: Exception) {
-                lastError = error
-                val timedOut = error is IOException && (
-                    error.message?.contains("timeout", ignoreCase = true) == true ||
-                        error.message?.contains("timed out", ignoreCase = true) == true
-                    )
-                if (timedOut) {
-                    lastError = ApiException("$label request timed out", true)
-                }
-                val retryable = (lastError as? ApiException)?.retryable == true || timedOut
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                lastError = friendlyError(error, label)
+                val retryable = (lastError as? ApiException)?.retryable == true
                 if (attempt < maxAttempts && retryable) {
                     delay(300L * attempt)
                     continue
@@ -207,12 +203,19 @@ class ApiClient(private val store: Store) {
                     JSONObject()
                         .put("route", routeOf(url))
                         .put("durationMs", System.currentTimeMillis() - startedAt)
-                        .put("reason", (lastError.message ?: label).take(120)),
+                        .put("reason", (error.message ?: label).take(120)),
                 )
                 throw lastError
             }
         }
-        throw lastError ?: ApiException("$label request failed")
+        throw lastError ?: ApiException("Couldn't load $label. Try again in a moment.", true)
+    }
+
+    private fun httpError(label: String, code: Int): ApiException = when {
+        code == 429 -> ApiException("FireSky is handling a lot of requests. Try again in a minute.", true, code)
+        code >= 500 -> ApiException("The FireSky service is busy loading $label. Try again in a minute.", code in RETRYABLE_STATUS_CODES, code)
+        code == 408 -> ApiException("Loading $label took too long. Try again.", true, code)
+        else -> ApiException("Couldn't load $label (error $code).", false, code)
     }
 
     private fun routeOf(url: String): String = runCatching { java.net.URI(url).path }.getOrDefault("/")
@@ -254,12 +257,19 @@ class ApiClient(private val store: Store) {
             "DELETE" -> builder.delete()
             else -> builder.get()
         }
-        val response = client.newCall(builder.build()).await()
+        val response = try {
+            client.newCall(builder.build()).await()
+        } catch (error: IOException) {
+            throw friendlyError(error, "your account")
+        }
         response.use { result ->
             val text = result.body?.string().orEmpty()
             val payload = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
             if (!result.isSuccessful) {
-                throw ApiException(payload.optString("error", "Cloud request failed"), false, result.code)
+                val message = payload.optString("error").ifBlank {
+                    if (result.code >= 500) "FireSky's account service is busy. Try again in a minute." else "Request failed (error ${result.code})."
+                }
+                throw ApiException(message, result.code >= 500 || result.code == 429, result.code)
             }
             return payload
         }
@@ -352,12 +362,20 @@ class ApiClient(private val store: Store) {
         accountRequest("/api/auth/password", token, "POST", body)
     }
 
-    suspend fun authStart(provider: String, returnTo: String): String {
+    suspend fun authStart(provider: String, returnTo: String, codeChallenge: String): String {
         val payload = accountRequest(
-            "/api/auth/start?provider=$provider&return_to=${java.net.URLEncoder.encode(returnTo, "UTF-8")}",
+            "/api/auth/start?provider=$provider&return_to=${java.net.URLEncoder.encode(returnTo, "UTF-8")}" +
+                "&code_challenge=$codeChallenge&code_challenge_method=S256",
             "",
         )
         return payload.optString("url").ifBlank { throw ApiException("Sign in is not configured") }
+    }
+
+    /** Trades the one-time code from the OAuth redirect for a session, proving the PKCE verifier. */
+    suspend fun exchangeAuthCode(code: String, codeVerifier: String): String {
+        val body = JSONObject().put("code", code).put("code_verifier", codeVerifier)
+        val payload = accountRequest("/api/auth/exchange", "", "POST", body)
+        return payload.optString("token").ifBlank { throw ApiException("Sign in did not return a session") }
     }
 
     suspend fun postFeedback(
@@ -417,6 +435,7 @@ class ApiClient(private val store: Store) {
         private const val STALE_TTL_MS = 6L * 60L * 60L * 1000L
         private const val GEOCODE_CACHE_TTL_MS = 24L * 60L * 60L * 1000L
         private val RETRYABLE_STATUS_CODES = setOf(408, 425, 429, 500, 502, 503, 504)
+        private val GEOCODE_LANGUAGES = setOf("en", "zh", "fr", "es")
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val EMPTY_BODY = ByteArray(0).toRequestBody(null)
     }
@@ -433,4 +452,15 @@ private suspend fun Call.await(): Response = suspendCancellableCoroutine { conti
         }
     })
     continuation.invokeOnCancellation { runCatching { cancel() } }
+}
+
+/** Maps transport failures to copy a person can act on; HTTP errors are already ApiExceptions. */
+internal fun friendlyError(error: Exception, label: String): ApiException = when (error) {
+    is ApiException -> error
+    is UnknownHostException, is ConnectException, is NoRouteToHostException ->
+        ApiException("Can't reach FireSky. Check your connection and try again.", true)
+    is InterruptedIOException -> ApiException("Loading $label took too long. Try again in a moment.", true)
+    is javax.net.ssl.SSLException -> ApiException("A secure connection to FireSky couldn't be made. Check your network.", true)
+    is IOException -> ApiException("Couldn't load $label. Check your connection and try again.", true)
+    else -> ApiException("Couldn't load $label. Try again in a moment.", false)
 }

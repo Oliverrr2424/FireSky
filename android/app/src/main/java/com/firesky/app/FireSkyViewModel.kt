@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.firesky.app.data.AccountSettings
@@ -13,20 +14,18 @@ import com.firesky.app.data.ApiClient
 import com.firesky.app.data.ApiException
 import com.firesky.app.data.DEFAULT_PLACE
 import com.firesky.app.data.Forecast
+import com.firesky.app.data.ForecastRepository
 import com.firesky.app.data.ForecastSnapshot
+import com.firesky.app.data.GridKey
 import com.firesky.app.data.Place
 import com.firesky.app.data.ScoredPoint
 import com.firesky.app.data.Store
-import com.firesky.app.data.optNullableString
 import com.firesky.app.data.Viewpoint
-import com.firesky.app.data.applyRegionalContextToForecast
-import com.firesky.app.data.buildForecastDays
-import com.firesky.app.data.compassLabel
 import com.firesky.app.data.forecastDayKey
 import com.firesky.app.data.formatRange
-import com.firesky.app.data.localIsoToUtcDate
-import com.firesky.app.data.preferredForecastMode
+import com.firesky.app.data.optNullableString
 import com.firesky.app.data.sunAzimuth
+import com.firesky.app.data.upcomingEvents
 import com.firesky.app.data.weatherDescription
 import com.firesky.app.data.weatherTheme
 import com.firesky.app.notifications.SkyAlerts
@@ -40,9 +39,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.Locale
+import kotlin.math.abs
 
 data class SearchState(
     val query: String = "",
@@ -54,6 +54,7 @@ data class SearchState(
 data class UiState(
     val place: Place = DEFAULT_PLACE,
     val activeMode: String = "sunset",
+    /** Today's outlook (days[0]); kept for callers that predate the multi-day list. */
     val data: Forecast? = null,
     val days: List<Forecast> = emptyList(),
     val grid: List<ScoredPoint>? = null,
@@ -80,6 +81,8 @@ data class UiState(
     val feedbackEditing: Boolean = false,
     val selectedSample: ScoredPoint? = null,
     val accountBusy: Boolean = false,
+    /** When the forecast on screen was fetched or re-scored. */
+    val forecastUpdatedAt: Long? = null,
 ) {
     val selectedOutlook: Forecast? get() = days.getOrNull(selectedDayIndex) ?: data
     val active: com.firesky.app.data.Score? get() = selectedOutlook?.scores?.get(activeMode)
@@ -111,10 +114,12 @@ data class UiState(
 class FireSkyViewModel(application: Application) : AndroidViewModel(application) {
     private val store = Store(application)
     private val api = ApiClient(store)
+    private val repository = ForecastRepository(api)
     private val connectivity = application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     private val _state = MutableStateFlow(
         UiState(
+            place = store.lastPlace ?: DEFAULT_PLACE,
             favorites = store.favorites,
             notificationsEnabled = store.notificationsEnabled,
             alertLeadMinutes = store.alertLeadMinutes,
@@ -122,6 +127,8 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
             sunsetAlerts = store.sunsetAlerts,
             alertThreshold = store.alertThreshold,
             accountToken = store.accountToken,
+            account = store.accountToken.takeIf { it.isNotBlank() }?.let { store.cachedAccount },
+            viewpoints = store.viewpoints,
             feedbackStore = store.feedback,
             offline = !isOnline(),
         ),
@@ -129,21 +136,42 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var loadSeq = 0
+
+    /** The place whose forecast is actually on screen; [UiState.place] may be one still loading. */
+    private var displayedPlace: Place? = null
+
+    /** Regional grids for every event the grid payload covers, keyed by mode and day. */
+    private var grids: Map<GridKey, List<ScoredPoint>> = emptyMap()
+    private var gridsLoaded = false
+
+    /** null while the regional grid is loading; empty when this event has no regional data. */
+    private fun gridFor(mode: String, dayIndex: Int): List<ScoredPoint>? =
+        if (gridsLoaded) grids[GridKey(mode, dayIndex)].orEmpty() else null
+
+    /** Set once the person picks a mode or day; until then the screen follows the next event. */
     private var userSelectedMode = false
+    private var userSelectedDay = false
+
+    /** An alert being opened: once its place loads, jump to the matching event. */
+    private var pendingAlertEvent: Pair<String, Long>? = null
+
+    private var foreground = true
     private var snapshotFingerprint = ""
     private var settingsSyncJob: Job? = null
     private var syncJob: Job? = null
     private var searchJob: Job? = null
     private var refreshJob: Job? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     init {
         registerNetworkCallback()
         _state.value.accountToken.takeIf { it.isNotBlank() }?.let { acceptAccountToken(it) }
-        load(DEFAULT_PLACE, "sunset")
+        load(_state.value.place, _state.value.activeMode)
         refreshJob = viewModelScope.launch {
             while (isActive) {
-                delay(90L * 60L * 1000L)
-                load(_state.value.place, _state.value.activeMode, force = true, silent = true)
+                delay(REFRESH_INTERVAL_MS)
+                // Background refresh belongs to ForecastRefreshWorker; only refresh what is on screen.
+                if (foreground) load(_state.value.place, _state.value.activeMode, force = true, silent = true)
             }
         }
     }
@@ -155,16 +183,28 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun registerNetworkCallback() {
-        try {
-            connectivity.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) {
-                    _state.update { it.copy(offline = false) }
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                val wasOffline = _state.value.offline
+                _state.update { it.copy(offline = false) }
+                // Recover a failed first load as soon as the connection returns.
+                val current = _state.value
+                if (wasOffline && current.data == null && !current.loading) {
+                    load(current.place, current.activeMode)
                 }
+                // An account check that failed offline is retried rather than left stale.
+                if (wasOffline && current.accountToken.isNotBlank() && !current.accountBusy) {
+                    acceptAccountToken(current.accountToken)
+                }
+            }
 
-                override fun onLost(network: Network) {
-                    _state.update { it.copy(offline = !isOnline()) }
-                }
-            })
+            override fun onLost(network: Network) {
+                _state.update { it.copy(offline = !isOnline()) }
+            }
+        }
+        try {
+            connectivity.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
         } catch (_: Exception) {
             // Some restricted devices do not allow default network callbacks.
         }
@@ -174,11 +214,11 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         _state.update {
             it.copy(
                 place = place,
-                selectedDayIndex = 0,
                 showSearch = false,
                 selectedSample = null,
             )
         }
+        userSelectedDay = false
         api.telemetry(
             "location_selected",
             JSONObject().put("source", if (place.name == "Current Location") "location" else "search"),
@@ -189,26 +229,26 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
     fun selectMode(mode: String) {
         userSelectedMode = true
         if (_state.value.activeMode == mode) return
-        _state.update { it.copy(activeMode = mode, selectedSample = null) }
-        val current = _state.value
-        val data = current.data ?: return
-        viewModelScope.launch {
-            try {
-                val grid = api.fetchGrid(current.place, mode)
-                _state.update {
-                    it.copy(
-                        grid = grid,
-                        data = applyRegionalContextToForecast(data, grid, current.place),
-                    )
-                }
-            } catch (_: Exception) {
-                _state.update { it.copy(grid = null) }
-            }
+        _state.update {
+            it.copy(
+                activeMode = mode,
+                selectedSample = null,
+                grid = gridFor(mode, it.selectedDayIndex),
+            )
         }
+        recordSelectedEvent()
     }
 
     fun selectDay(index: Int) {
-        _state.update { it.copy(selectedDayIndex = index) }
+        userSelectedDay = true
+        _state.update {
+            it.copy(
+                selectedDayIndex = index,
+                selectedSample = null,
+                grid = gridFor(it.activeMode, index),
+            )
+        }
+        recordSelectedEvent()
         api.telemetry("outlook_day_selected", JSONObject().put("dayOffset", index).put("mode", _state.value.activeMode))
     }
 
@@ -232,6 +272,7 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         store.notificationsEnabled = next
         _state.update { it.copy(notificationsEnabled = next) }
         pushCloudSettings()
+        scheduleAlerts()
     }
 
     fun setAlertLeadMinutes(minutes: Int) {
@@ -266,63 +307,127 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         load(_state.value.place, _state.value.activeMode, force = true)
     }
 
+    /**
+     * Loads [place]. A new place only replaces what is on screen once its own
+     * forecast arrives; if that fails, the screen keeps (and names) the place
+     * it is actually showing.
+     */
     fun load(place: Place, mode: String, force: Boolean = false, silent: Boolean = false) {
         val seq = ++loadSeq
         if (!silent) _state.update { it.copy(loading = true, error = "") }
-        else _state.update { it.copy(error = "") }
         viewModelScope.launch {
             try {
-                val bundle = api.fetchForecast(place, force)
-                val forecast = com.firesky.app.data.buildForecast(bundle)
-                val modeForGrid = if (userSelectedMode) mode else preferredForecastMode(forecast)
+                val days = repository.loadDays(place, force)
                 if (seq != loadSeq) return@launch
-                if (!userSelectedMode && modeForGrid != _state.value.activeMode) {
-                    _state.update { it.copy(activeMode = modeForGrid) }
-                }
+                val samePlace = displayedPlace?.sameSpot(place) == true
+                val (dayIndex, nextMode) = pickEvent(days, keepSelection = samePlace)
+                displayedPlace = place
+                grids = emptyMap()
+                gridsLoaded = false
+                store.lastPlace = place
                 _state.update {
                     it.copy(
-                        data = forecast,
-                        days = buildForecastDays(bundle),
+                        place = place,
+                        data = days.first(),
+                        days = days,
                         grid = null,
+                        activeMode = nextMode,
+                        selectedDayIndex = dayIndex,
                         loading = false,
+                        error = "",
+                        forecastUpdatedAt = System.currentTimeMillis(),
                     )
                 }
-                persistSnapshot(forecast)
-                scheduleAlerts()
                 try {
-                    val grid = api.fetchGrid(place, modeForGrid, force)
+                    val result = repository.regionalize(place, days, force)
                     if (seq != loadSeq) return@launch
+                    grids = result.grids
+                    gridsLoaded = true
                     _state.update {
                         it.copy(
-                            grid = grid,
-                            data = applyRegionalContextToForecast(forecast, grid, place),
+                            data = result.days.first(),
+                            days = result.days,
+                            grid = gridFor(it.activeMode, it.selectedDayIndex),
                         )
                     }
-                    persistSnapshot(_state.value.data ?: forecast)
-                    loadForecastHistory()
-                } catch (gridError: Exception) {
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
                     if (seq == loadSeq) {
-                        _state.update { it.copy(error = "Regional map is temporarily unavailable; local weather is still current.") }
+                        gridsLoaded = true
+                        _state.update {
+                            it.copy(
+                                grid = gridFor(it.activeMode, it.selectedDayIndex),
+                                error = "Regional map is temporarily unavailable; local weather is still current.",
+                            )
+                        }
                     }
                 }
+                if (seq != loadSeq) return@launch
+                recordSelectedEvent()
+                scheduleAlerts()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (error: Exception) {
-                if (seq == loadSeq) {
-                    _state.update {
-                        it.copy(
-                            loading = false,
-                            error = error.message ?: "Loading failed",
-                        )
+                if (seq != loadSeq) return@launch
+                val message = error.message ?: "Couldn't load the forecast. Try again in a moment."
+                val shown = displayedPlace
+                _state.update {
+                    if (it.data != null && shown != null && !shown.sameSpot(place)) {
+                        it.copy(place = shown, loading = false, error = "Couldn't load ${place.name}. $message")
+                    } else {
+                        it.copy(loading = false, error = message)
                     }
                 }
+                pendingAlertEvent = null
             }
         }
     }
 
-    private fun persistSnapshot(forecast: Forecast) {
-        val mode = _state.value.activeMode
+    /**
+     * Chooses which day and mode to lead with. An alert being opened wins; then
+     * the person's own picks; otherwise the next sunrise or sunset still worth watching.
+     */
+    private fun pickEvent(days: List<Forecast>, keepSelection: Boolean): Pair<Int, String> {
+        val current = _state.value
+        pendingAlertEvent?.let { (mode, eventAt) ->
+            pendingAlertEvent = null
+            val index = days.indexOfFirst { abs(it[mode].toEpochMilli() - eventAt) <= 3L * 3600_000L }
+            if (index >= 0) {
+                userSelectedMode = true
+                userSelectedDay = true
+                return index to mode
+            }
+        }
+        if (keepSelection && userSelectedDay) {
+            return current.selectedDayIndex.coerceIn(0, days.lastIndex) to current.activeMode
+        }
+        val upcoming = upcomingEvents(days)
+        if (userSelectedMode) {
+            val next = upcoming.firstOrNull { it.mode == current.activeMode }
+            return (next?.dayIndex ?: 0) to current.activeMode
+        }
+        val next = upcoming.firstOrNull() ?: return 0 to "sunset"
+        return next.dayIndex to next.mode
+    }
+
+    /** Records the selected event's score in the forecast-change history and loads that history. */
+    private fun recordSelectedEvent() {
+        val current = _state.value
+        val outlook = current.selectedOutlook ?: return
+        // History is only meaningful for events the regional model can score.
+        if (current.selectedDayIndex > 1) {
+            _state.update { it.copy(forecastSnapshots = emptyList()) }
+            return
+        }
+        persistSnapshot(outlook, current.activeMode)
+        loadForecastHistory(outlook, current.activeMode)
+    }
+
+    private fun persistSnapshot(forecast: Forecast, mode: String) {
         val score = forecast.scores[mode]
         val event = forecast[mode]
-        val place = _state.value.place
+        val place = displayedPlace ?: return
         val calculatedAt = (System.currentTimeMillis() / (15L * 60L * 1000L)) * 15L * 60L * 1000L
         val snapshot = ForecastSnapshot(
             mode = mode,
@@ -337,66 +442,61 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         val fingerprint = "${snapshot.mode}:${snapshot.eventAt}:${snapshot.latitude}:${snapshot.longitude}:${snapshot.calculatedAt}:${Math.round(snapshot.probability)}"
         if (snapshotFingerprint == fingerprint) return
         snapshotFingerprint = fingerprint
-        val snapshots = persistLocalSnapshot(snapshot)
-        _state.update { it.copy(forecastSnapshots = snapshots) }
+        persistLocalSnapshot(snapshot)
         val token = _state.value.accountToken
         if (token.isNotBlank()) {
             viewModelScope.launch { runCatching { api.postSnapshot(token, snapshot) } }
         }
     }
 
-    private fun persistLocalSnapshot(snapshot: ForecastSnapshot): List<ForecastSnapshot> {
+    private fun persistLocalSnapshot(snapshot: ForecastSnapshot) {
         val storeJson = store.snapshots
-        val key = "${snapshot.mode}:${snapshot.eventAt}:${snapshot.latitude}:${snapshot.longitude}"
+        val key = snapshotKey(snapshot.mode, snapshot.eventAt, snapshot.latitude, snapshot.longitude)
         val previous = storeJson.optJSONArray(key)?.let { array ->
             List(array.length()) { index -> ForecastSnapshot.fromJson(array.getJSONObject(index)) }
         } ?: emptyList()
-        val cutoff = System.currentTimeMillis() - 10L * 86400000L
+        val cutoff = System.currentTimeMillis() - SNAPSHOT_RETENTION_MS
         val next = (previous.filter { it.calculatedAt >= cutoff && it.calculatedAt != snapshot.calculatedAt } + snapshot)
             .sortedBy { it.calculatedAt }
             .takeLast(96)
         val array = JSONArray()
         next.forEach { array.put(it.toJson()) }
         storeJson.put(key, array)
+        // Drop whole histories for events that are long past, so the store doesn't grow forever.
+        storeJson.keys().asSequence().toList().forEach { existing ->
+            val eventAt = existing.split(':').getOrNull(1)?.toLongOrNull()
+            if (eventAt == null || eventAt < cutoff) storeJson.remove(existing)
+        }
         store.snapshots = storeJson
-        return next
     }
 
-    private fun loadForecastHistory() {
-        val current = _state.value
-        val outlook = current.data ?: return
-        val mode = current.activeMode
+    private fun snapshotKey(mode: String, eventAt: Long, latitude: Double, longitude: Double): String =
+        "$mode:$eventAt:${String.format(Locale.US, "%.4f", latitude).toDouble()}:${String.format(Locale.US, "%.4f", longitude).toDouble()}"
+
+    private fun loadForecastHistory(outlook: Forecast, mode: String) {
+        val place = displayedPlace ?: return
         val eventAt = outlook[mode].toEpochMilli()
-        val key = "$mode:$eventAt:${String.format(Locale.US, "%.4f", current.place.latitude).toDouble()}:${String.format(Locale.US, "%.4f", current.place.longitude).toDouble()}"
+        val key = snapshotKey(mode, eventAt, place.latitude, place.longitude)
         val local = store.snapshots.optJSONArray(key)?.let { array ->
             List(array.length()) { index -> ForecastSnapshot.fromJson(array.getJSONObject(index)) }
         } ?: emptyList()
         _state.update { it.copy(forecastSnapshots = local) }
-        val token = current.accountToken
+        val token = _state.value.accountToken
         if (token.isBlank()) return
         viewModelScope.launch {
             runCatching { api.fetchForecastHistory(token, eventAt, mode) }
                 .onSuccess { snapshots ->
-                    if (snapshots.isNotEmpty()) _state.update { it.copy(forecastSnapshots = snapshots) }
+                    val stillSelected = _state.value.selectedOutlook?.get(_state.value.activeMode)?.toEpochMilli() == eventAt
+                    if (snapshots.isNotEmpty() && stillSelected) _state.update { it.copy(forecastSnapshots = snapshots) }
                 }
         }
     }
 
     fun scheduleAlerts() {
         val current = _state.value
-        val forecast = current.data ?: return
-        SkyAlerts.schedule(
-            getApplication(),
-            forecast,
-            current.place.name,
-            AccountSettings(
-                notificationsEnabled = current.notificationsEnabled,
-                alertLeadMinutes = current.alertLeadMinutes,
-                sunriseAlerts = current.sunriseAlerts,
-                sunsetAlerts = current.sunsetAlerts,
-                alertThreshold = current.alertThreshold,
-            ),
-        )
+        val place = displayedPlace ?: return
+        if (current.days.isEmpty()) return
+        SkyAlerts.schedule(getApplication(), current.days, place, currentSettings())
     }
 
     // ---- Search ----------------------------------------------------------
@@ -417,7 +517,17 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         searchJob = viewModelScope.launch {
             try {
                 val results = api.geocode(query)
-                _state.update { it.copy(search = it.search.copy(searching = false, results = results)) }
+                _state.update {
+                    it.copy(
+                        search = it.search.copy(
+                            searching = false,
+                            results = results,
+                            error = if (results.isEmpty()) "No North American places match \"$query\"." else "",
+                        ),
+                    )
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _state.update {
                     it.copy(search = it.search.copy(searching = false, error = error.message ?: "Unable to search locations"))
@@ -440,18 +550,24 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val account = api.fetchAccount(token)
                 val sync = api.fetchSync(token)
+                store.cachedAccount = account
                 store.notificationsEnabled = account.settings.notificationsEnabled
                 store.alertLeadMinutes = account.settings.alertLeadMinutes
                 store.sunriseAlerts = account.settings.sunriseAlerts
                 store.sunsetAlerts = account.settings.sunsetAlerts
                 store.alertThreshold = account.settings.alertThreshold
-                if (sync.locations.isNotEmpty()) store.favorites = sync.locations
+                val favorites = if (sync.locations.isNotEmpty()) sync.locations else _state.value.favorites
+                // Viewpoints saved before signing in join the cloud copy instead of vanishing.
+                val localOnly = _state.value.viewpoints.filter { local -> sync.viewpoints.none { it.id == local.id } }
+                val viewpoints = (sync.viewpoints + localOnly).take(30)
+                store.favorites = favorites
+                store.viewpoints = viewpoints
                 _state.update {
                     it.copy(
                         account = account,
                         accountBusy = false,
-                        favorites = if (sync.locations.isNotEmpty()) sync.locations else it.favorites,
-                        viewpoints = sync.viewpoints,
+                        favorites = favorites,
+                        viewpoints = viewpoints,
                         notificationsEnabled = account.settings.notificationsEnabled,
                         alertLeadMinutes = account.settings.alertLeadMinutes,
                         sunriseAlerts = account.settings.sunriseAlerts,
@@ -460,49 +576,118 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
                         lastSyncedAt = System.currentTimeMillis(),
                     )
                 }
+                if (localOnly.isNotEmpty() || (sync.locations.isEmpty() && favorites.isNotEmpty())) scheduleSyncPush()
                 scheduleAlerts()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (error: Exception) {
-                store.accountToken = ""
-                _state.update {
-                    it.copy(
-                        accountToken = "",
-                        account = null,
-                        accountBusy = false,
-                        accountError = error.message ?: "Unable to load account",
-                    )
+                val status = (error as? ApiException)?.statusCode ?: 0
+                if (status == 401 || status == 403) {
+                    // Only a rejected session signs the person out; a dropped connection must not.
+                    store.accountToken = ""
+                    store.cachedAccount = null
+                    _state.update {
+                        it.copy(
+                            accountToken = "",
+                            account = null,
+                            accountBusy = false,
+                            accountError = "Your session has expired. Please sign in again.",
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(
+                            account = it.account ?: store.cachedAccount,
+                            accountBusy = false,
+                            accountError = if ((it.account ?: store.cachedAccount) != null) "" else error.message ?: "Unable to load account",
+                        )
+                    }
                 }
             }
         }
     }
 
     fun signInWithPassword(action: String, email: String, password: String, displayName: String?) {
+        if (_state.value.accountBusy) return
         _state.update { it.copy(accountBusy = true, accountError = "") }
         viewModelScope.launch {
             try {
                 val token = api.passwordAuth(action, email, password, displayName)
                 acceptAccountToken(token)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _state.update { it.copy(accountBusy = false, accountError = error.message ?: "Sign in failed") }
             }
         }
     }
 
+    /**
+     * Starts Google sign-in with PKCE: the browser only ever sees a challenge,
+     * and the one-time code it hands back is worthless without the verifier
+     * kept here, so another app catching the redirect can't sign in as you.
+     */
     fun startGoogleSignIn(onUrl: (String) -> Unit) {
+        if (_state.value.accountBusy) return
+        val verifier = randomUrlSafe(32)
+        val challenge = Base64.encodeToString(
+            MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)),
+            Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP,
+        )
+        store.pendingAuthVerifier = verifier
         _state.update { it.copy(accountError = "", accountBusy = true) }
         viewModelScope.launch {
             try {
-                val url = api.authStart("google", "com.firesky.app://auth")
+                val url = api.authStart("google", "com.firesky.app://auth", challenge)
                 _state.update { it.copy(accountBusy = false) }
                 onUrl(url)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                store.pendingAuthVerifier = ""
+                _state.update { it.copy(accountBusy = false, accountError = error.message ?: "Sign in failed") }
+            }
+        }
+    }
+
+    /** Finishes Google sign-in from the `com.firesky.app://auth?auth_code=` redirect. */
+    fun completeOAuth(code: String) {
+        val verifier = store.pendingAuthVerifier
+        store.pendingAuthVerifier = ""
+        if (verifier.isBlank()) {
+            _state.update { it.copy(accountError = "This sign-in link has expired. Please try again.") }
+            return
+        }
+        _state.update { it.copy(accountBusy = true, accountError = "") }
+        viewModelScope.launch {
+            try {
+                acceptAccountToken(api.exchangeAuthCode(code, verifier))
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _state.update { it.copy(accountBusy = false, accountError = error.message ?: "Sign in failed") }
             }
         }
+    }
+
+    /**
+     * Accepts a raw session token from a server that predates the code
+     * exchange, but only while this app has a sign-in in flight, so a stray
+     * link can't silently swap the account.
+     */
+    fun acceptLegacyOAuthToken(token: String) {
+        if (store.pendingAuthVerifier.isBlank()) {
+            _state.update { it.copy(accountError = "This sign-in link has expired. Please try again.") }
+            return
+        }
+        store.pendingAuthVerifier = ""
+        acceptAccountToken(token)
     }
 
     fun signOut() {
         store.accountToken = ""
-        _state.update { it.copy(accountToken = "", account = null, showAccount = false, viewpoints = emptyList()) }
+        store.cachedAccount = null
+        _state.update { it.copy(accountToken = "", account = null, showAccount = false) }
     }
 
     fun saveProfile(displayName: String) {
@@ -514,12 +699,16 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
                 val settings = currentSettings()
                 val user = api.updateAccount(token, settings, displayName)
                 _state.update {
+                    val account = it.account?.copy(user = user ?: it.account.user)
+                    store.cachedAccount = account
                     it.copy(
-                        account = it.account?.copy(user = user ?: it.account.user),
+                        account = account,
                         accountBusy = false,
                         lastSyncedAt = System.currentTimeMillis(),
                     )
                 }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _state.update { it.copy(accountBusy = false, accountError = error.message ?: "Unable to save profile") }
             }
@@ -533,6 +722,8 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
             try {
                 api.changePassword(token, currentPassword, nextPassword)
                 onDone(null)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (error: Exception) {
                 onDone(error.message ?: "Unable to update password")
             }
@@ -547,6 +738,8 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
                 api.deleteAccount(token)
                 signOut()
                 onDone(null)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (error: Exception) {
                 onDone(error.message ?: "Unable to delete account")
             }
@@ -573,8 +766,10 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
             delay(400)
             runCatching {
                 api.updateAccount(token, currentSettings(), null)
+                _state.value.account?.let { store.cachedAccount = it.copy(settings = currentSettings()) }
                 _state.update { it.copy(lastSyncedAt = System.currentTimeMillis()) }
             }.onFailure { error ->
+                if (error is kotlinx.coroutines.CancellationException) throw error
                 _state.update { it.copy(accountError = error.message ?: "Cloud sync failed") }
             }
         }
@@ -590,6 +785,7 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
                 api.putSync(token, _state.value.favorites, _state.value.viewpoints)
                 _state.update { it.copy(lastSyncedAt = System.currentTimeMillis()) }
             }.onFailure { error ->
+                if (error is kotlinx.coroutines.CancellationException) throw error
                 _state.update { it.copy(accountError = error.message ?: "Cloud sync failed") }
             }
         }
@@ -609,9 +805,9 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
             updatedAt = System.currentTimeMillis(),
         )
         val next = (listOf(viewpoint) + _state.value.viewpoints.filterNot {
-            kotlin.math.abs(it.latitude - place.latitude) < 0.0001 &&
-                kotlin.math.abs(it.longitude - place.longitude) < 0.0001
+            abs(it.latitude - place.latitude) < 0.0001 && abs(it.longitude - place.longitude) < 0.0001
         }).take(30)
+        store.viewpoints = next
         _state.update { it.copy(viewpoints = next) }
         scheduleSyncPush()
     }
@@ -719,20 +915,63 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onAppForeground() {
+        foreground = true
         if (_state.value.offline != !isOnline()) {
             _state.update { it.copy(offline = !isOnline()) }
         }
-    }
-
-    fun onNotificationMode(mode: String) {
-        if (mode in listOf("sunrise", "sunset")) {
-            userSelectedMode = true
-            _state.update { it.copy(activeMode = mode) }
+        val current = _state.value
+        val updatedAt = current.forecastUpdatedAt
+        if (!current.loading && updatedAt != null && System.currentTimeMillis() - updatedAt > STALE_ON_RESUME_MS) {
+            load(current.place, current.activeMode, silent = true)
+        } else if (current.days.isNotEmpty() && !userSelectedDay && !userSelectedMode) {
+            // Hours can pass in the background: roll over to the event that is next now.
+            val (dayIndex, mode) = pickEvent(current.days, keepSelection = true)
+            if (dayIndex != current.selectedDayIndex || mode != current.activeMode) {
+                _state.update {
+                    it.copy(selectedDayIndex = dayIndex, activeMode = mode, grid = gridFor(mode, dayIndex))
+                }
+                recordSelectedEvent()
+            }
         }
     }
+
+    fun onAppBackground() {
+        foreground = false
+    }
+
+    /** Opens the forecast an alert was about: its place, its mode, and the day of that event. */
+    fun openFromAlert(place: Place?, mode: String, eventAt: Long) {
+        if (mode !in listOf("sunrise", "sunset")) return
+        val current = _state.value
+        val target = place ?: displayedPlace ?: current.place
+        if (eventAt > 0) pendingAlertEvent = mode to eventAt
+        userSelectedMode = true
+        _state.update { it.copy(activeMode = mode, showAccount = false, showSearch = false) }
+        if (displayedPlace?.sameSpot(target) == true && current.days.isNotEmpty()) {
+            val (dayIndex, nextMode) = pickEvent(current.days, keepSelection = true)
+            _state.update { it.copy(selectedDayIndex = dayIndex, activeMode = nextMode, grid = gridFor(nextMode, dayIndex)) }
+            recordSelectedEvent()
+        } else {
+            selectPlace(target)
+        }
+    }
+
+    fun onNotificationMode(mode: String) = openFromAlert(null, mode, 0L)
 
     override fun onCleared() {
         super.onCleared()
         refreshJob?.cancel()
+        networkCallback?.let { runCatching { connectivity.unregisterNetworkCallback(it) } }
+    }
+
+    private companion object {
+        const val REFRESH_INTERVAL_MS = 90L * 60L * 1000L
+        const val STALE_ON_RESUME_MS = 30L * 60L * 1000L
+        const val SNAPSHOT_RETENTION_MS = 10L * 86_400_000L
+
+        fun randomUrlSafe(bytes: Int): String {
+            val buffer = ByteArray(bytes).also { SecureRandom().nextBytes(it) }
+            return Base64.encodeToString(buffer, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        }
     }
 }

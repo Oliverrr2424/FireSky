@@ -240,10 +240,17 @@ fun localIsoToUtcDate(value: String?, utcOffsetSeconds: Int = 0): Instant? {
     }
 }
 
+/** Follows the device's 12/24-hour setting; refreshed from the activity on resume. */
+object ClockStyle {
+    @Volatile
+    var use24Hour: Boolean = true
+}
+
 fun formatTime(value: Instant?, timeZone: String): String {
     if (value == null) return "--:--"
     return try {
-        DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US).withZone(java.time.ZoneId.of(timeZone)).format(value)
+        val pattern = if (ClockStyle.use24Hour) "HH:mm" else "h:mm a"
+        DateTimeFormatter.ofPattern(pattern, java.util.Locale.US).withZone(java.time.ZoneId.of(timeZone)).format(value)
     } catch (_: Exception) {
         "--:--"
     }
@@ -251,7 +258,16 @@ fun formatTime(value: Instant?, timeZone: String): String {
 
 fun formatRange(start: Instant?, end: Instant?, timeZone: String): String {
     if (start == null || end == null) return "--"
-    return "${formatTime(start, timeZone)}-${formatTime(end, timeZone)}"
+    val from = formatTime(start, timeZone)
+    val to = formatTime(end, timeZone)
+    if (!ClockStyle.use24Hour) {
+        // "7:02–7:32 AM" rather than repeating the meridiem on both ends.
+        val fromMeridiem = from.takeLast(2)
+        if (fromMeridiem == to.takeLast(2) && fromMeridiem in setOf("AM", "PM")) {
+            return "${from.dropLast(3)}-$to"
+        }
+    }
+    return "$from-$to"
 }
 
 fun formatMinutes(totalMinutes: Double?): String {
