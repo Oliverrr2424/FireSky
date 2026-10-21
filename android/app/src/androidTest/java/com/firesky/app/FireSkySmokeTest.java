@@ -12,13 +12,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/** Basic release-gate check: the Capacitor activity launches with its WebView. */
+/** Basic release-gate check: the native activity launches with its Compose content. */
 @RunWith(AndroidJUnit4.class)
 public class FireSkySmokeTest {
     @Test
-    public void launchesWithVisibleWebView() {
+    public void launchesWithVisibleComposeContent() {
         try (ActivityScenario<MainActivity> ignored = ActivityScenario.launch(MainActivity.class)) {
-            onView(withClassName(containsString("WebView"))).check(matches(isDisplayed()));
+            onView(withClassName(containsString("androidx.compose.ui.platform.ComposeView")))
+                .check(matches(isDisplayed()));
         }
     }
 }

@@ -37,7 +37,7 @@ The exact-alarm/Doze test used the original forecast event time but moved the te
 ## Build and automated gates
 
 - `assembleDebug`, `testDebugUnitTest`, `lintDebug`: successful after the pinch fix; all 7 unit tests pass. Existing lint warnings remain.
-- `connectedDebugAndroidTest`: successful after the pinch fix (1 test). The user's working-tree smoke test checks visible Compose content; the other agent's report about a WebView assertion applied to the committed baseline, not this working tree. This file remains uncommitted at the user's request.
+- `connectedDebugAndroidTest`: successful after the pinch fix (1 test). The user's smoke test checks visible Compose content; the other agent's report about a WebView assertion applied to the earlier committed baseline. After testing, the user authorized committing this change together with the existing `RBF_SIGMA = 0.24` adjustment; both were already included in the tested candidate.
 - `assembleRelease` with R8 and the external test-signing init script: successful. APK signature verified as `Android Debug`.
 - GitHub Actions is integrated but has not run on a GitHub runner; no push was made.
 

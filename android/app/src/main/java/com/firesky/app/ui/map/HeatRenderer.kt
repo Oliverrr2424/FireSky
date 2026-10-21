@@ -17,7 +17,7 @@ import kotlin.math.tan
  * evaluated in screen space and coloured with the same six-stop ramp.
  */
 object HeatField {
-    private const val RBF_SIGMA = 0.38
+    private const val RBF_SIGMA = 0.24
     private const val RBF_SIG2_INV = 1.0 / (2.0 * RBF_SIGMA * RBF_SIGMA)
     private const val CUTOFF_SQUARED = 16.0
 
