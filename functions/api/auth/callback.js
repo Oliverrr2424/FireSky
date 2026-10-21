@@ -1,4 +1,4 @@
-import { createSession, database } from '../../_shared/account.js';
+import { createSession, database, sha256 } from '../../_shared/account.js';
 
 function base64UrlBytes(value) {
   const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4);
@@ -61,7 +61,8 @@ export async function onRequest({ request, env }) {
   try {
     const values = request.method === 'POST' ? Object.fromEntries(await request.formData()) : Object.fromEntries(new URL(request.url).searchParams);
     const state = String(values.state || ''); const code = String(values.code || '');
-    const record = await db.prepare('SELECT provider, return_to FROM oauth_states WHERE state=? AND expires_at>?').bind(state, Date.now()).first();
+    // SELECT * keeps working before the code_challenge column (migration 0004) exists.
+    const record = await db.prepare('SELECT * FROM oauth_states WHERE state=? AND expires_at>?').bind(state, Date.now()).first();
     await db.prepare('DELETE FROM oauth_states WHERE state=?').bind(state).run();
     if (!record || !code) throw new Error('This sign-in link has expired. Please try again.');
     const callback = `${new URL(request.url).origin}/api/auth/callback`;
@@ -77,7 +78,16 @@ export async function onRequest({ request, env }) {
     } else {
       await db.prepare('UPDATE users SET email=COALESCE(?,email),display_name=COALESCE(?,display_name),avatar_url=COALESCE(?,avatar_url),updated_at=? WHERE id=?').bind(identity.email, identity.name, identity.avatar, now, userId).run();
     }
-    const destination = new URL(record.return_to); destination.searchParams.set('auth_token', await createSession(db, userId));
+    const destination = new URL(record.return_to);
+    if (record.code_challenge) {
+      // PKCE: hand back a short-lived one-time code; only the app holding the
+      // verifier can trade it for a session at /api/auth/exchange.
+      const oneTimeCode = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');
+      await db.prepare('INSERT INTO oauth_codes (code_hash, user_id, code_challenge, expires_at, created_at) VALUES (?, ?, ?, ?, ?)').bind(await sha256(oneTimeCode), userId, record.code_challenge, now + 5 * 60 * 1000, now).run();
+      destination.searchParams.set('auth_code', oneTimeCode);
+    } else {
+      destination.searchParams.set('auth_token', await createSession(db, userId));
+    }
     return Response.redirect(destination.toString(), 302);
   } catch (error) {
     return new Response(`FireSky sign-in failed: ${error.message}`, { status: 400, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });

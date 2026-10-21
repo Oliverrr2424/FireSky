@@ -37,6 +37,8 @@ npx wrangler pages secret put GOOGLE_OAUTH_CLIENT_SECRET --project-name firesky
 
 Email/password accounts are stored in D1 alongside the rest of the account data. Passwords are never stored directly: the Pages Function derives a salted PBKDF2-SHA-256 hash before writing a `password_credentials` record. Apply migration `0003_password_credentials.sql` before releasing this flow.
 
+Native Google sign-in uses PKCE. The Android app sends a `code_challenge` to `/api/auth/start`; the callback then redirects to `com.firesky.app://auth?auth_code=…` with a five-minute, single-use code instead of a session token, and the app trades that code plus its verifier at `POST /api/auth/exchange`. Another app that intercepts the custom-scheme redirect therefore gets nothing usable. Apply migration `0004_oauth_pkce.sql` **before** deploying these Functions: until the `code_challenge` column exists, native Google sign-in fails (the browser flow is unaffected). Builds released before PKCE keep working against the new server, because requests without a challenge still receive `auth_token`.
+
 The Android app receives Google OAuth through `com.firesky.app://auth`; Google sign-in deliberately opens in the system browser rather than the embedded WebView. Apple Sign in is not enabled in this release.
 
 ## 4. Reliable background push
