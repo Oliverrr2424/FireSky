@@ -1,7 +1,150 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FireSky</string>
     <string name="title_activity_main">FireSky</string>
     <string name="package_name">com.firesky.app</string>
     <string name="custom_url_scheme">com.firesky.app</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_forecast">Forecast</string>
+    <string name="nav_chase_map">Chase Map</string>
+    <string name="nav_account">Account</string>
+
+    <!-- Modes & Common -->
+    <string name="mode_sunrise">Sunrise</string>
+    <string name="mode_sunset">Sunset</string>
+    <string name="label_probability">PROBABILITY</string>
+    <string name="label_intensity">INTENSITY</string>
+    <string name="label_saved_places">Saved places</string>
+    <string name="label_popular_cities">Popular cities</string>
+    <string name="search_placeholder">Search North American cities</string>
+    <string name="action_search">Search</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_open_settings">Open settings</string>
+
+    <!-- Home & Cards -->
+    <string name="todays_fire_sky">TODAY\'S FIRE SKY</string>
+    <string name="outlook_7_day">7-day outlook</string>
+    <string name="outlook_tap_hint">Tap a day to compare the model signal</string>
+    <string name="label_today">Today</string>
+    <string name="label_forecast">Forecast</string>
+    <string name="label_weather">Weather</string>
+    <string name="kicker_solar_events">Solar Events</string>
+    <string name="kicker_blue_hour">Blue Hour</string>
+    <string name="label_day_length">Day Length</string>
+    <string name="label_peak_color">Peak Color</string>
+    <string name="label_best_duration">Best Duration</string>
+    <string name="label_morning">Morning</string>
+    <string name="label_evening">Evening</string>
+    <string name="label_total">Total</string>
+    <string name="label_morning_length">Morning Length</string>
+    <string name="label_evening_length">Evening Length</string>
+    <string name="window_forecast_title">Window Forecast · Solar Corridor</string>
+    <string name="label_weather_signal">Weather signal</string>
+    <string name="label_peak_window">Peak Window</string>
+    <string name="label_window_aqi">Window AQI</string>
+    <string name="label_window_visibility">Window Visibility</string>
+    <string name="factor_cloud_screen">Cloud Screen</string>
+    <string name="factor_blocker_clearance">Blocker Clearance</string>
+    <string name="factor_solar_corridor">Solar Corridor</string>
+    <string name="factor_color_chemistry">Color Chemistry</string>
+    <string name="factor_sun_access">Sun Access</string>
+    <string name="factor_regional_texture">Regional Texture</string>
+    <string name="factor_rain_clearance">Rain Clearance</string>
+    <string name="factor_visibility">Visibility</string>
+    <string name="forecast_changes_title">Forecast changes</string>
+    <string name="sun_direction_title">Sun direction</string>
+    <string name="precip_alert_title">Precipitation alert</string>
+    <string name="save_viewpoint_cta">Save camera viewpoint</string>
+    <string name="saved_viewpoints_label">Saved viewpoints</string>
+    <string name="rate_tonights_sunset">RATE TONIGHT\'S SUNSET</string>
+    <string name="predicted_sunset_chance">Predicted sunset chance</string>
+    <string name="feedback_submitted">Feedback submitted</string>
+    <string name="action_like">Like</string>
+    <string name="action_dislike">Dislike</string>
+    <string name="local_alert_lead_time">Local alert lead time</string>
+    <string name="source_line_footer">WEATHER AND AIR QUALITY FORECAST · 7-DAY OUTLOOK</string>
+
+    <!-- Score Descriptions -->
+    <string name="score_excellent">Excellent</string>
+    <string name="score_high">High chance</string>
+    <string name="score_possible">Possible</string>
+    <string name="score_slight">Slight</string>
+    <string name="score_unlikely">Unlikely</string>
+
+    <!-- Chase Map -->
+    <string name="chase_map_title">Chase Map</string>
+    <string name="chase_map_subtitle">Tap a spot to plan your view.</string>
+    <string name="chase_best_spot">Best nearby</string>
+    <string name="chase_navigate">Navigate here</string>
+    <string name="chase_set_place">Forecast here</string>
+    <string name="chase_save_spot">Save spot</string>
+    <string name="chase_selected_spot">Selected chase point</string>
+    <string name="chase_distance_away">%1$s away · %2$s</string>
+
+    <!-- Onboarding -->
+    <string name="onboard_skip">Skip</string>
+    <string name="onboard_back">Back</string>
+    <string name="onboard_continue">Continue</string>
+    <string name="onboard_welcome_title">Welcome to FireSky</string>
+    <string name="onboard_welcome_body">The sky burns for twenty minutes.\nWe tell you which ones.</string>
+    <string name="onboard_get_started">Get started</string>
+    <string name="onboard_terms">By continuing you agree to the Terms of Service and Privacy Policy.</string>
+    <string name="onboard_value_title">Light travels 400 km\nbefore it reaches your sky.</string>
+    <string name="onboard_value_body">We read the clouds along that path, so you know whether tonight is worth stepping outside.</string>
+    <string name="onboard_location_title">Where do you watch the sky?</string>
+    <string name="onboard_location_body">Your horizon shapes the forecast.</string>
+    <string name="onboard_use_gps">Use my location</string>
+    <string name="onboard_or_pick_city">or pick a city</string>
+    <string name="onboard_alerts_title">When should we tell you?</string>
+    <string name="onboard_alerts_body">Only when the chance is high enough to be worth it.</string>
+    <string name="onboard_threshold_label">Minimum chance</string>
+    <string name="onboard_lead_label">Heads-up</string>
+    <string name="onboard_watch_label">Watch</string>
+    <string name="onboard_enable_alerts_cta">Turn on alerts</string>
+    <string name="onboard_skip_alerts_cta">Not now</string>
+    <string name="onboard_units_title">How do you read the sky?</string>
+    <string name="onboard_units_body">You can change these later.</string>
+    <string name="onboard_done_title">You\'re set.</string>
+    <string name="onboard_done_body">We\'ll watch the horizon from here.</string>
+    <string name="onboard_finish_cta">Enter FireSky</string>
+
+    <!-- Account & Alerts v2 -->
+    <string name="account_title_signed_in">Your FireSky account</string>
+    <string name="account_title_guest">Sign in &amp; Preferences</string>
+    <string name="alerts_v2_places_title">Alert locations</string>
+    <string name="alerts_v2_places_subtitle">Receive sunrise &amp; sunset heads-up for your primary place and selected favorites.</string>
+    <string name="alerts_v2_improved_label">Forecast improved alerts</string>
+    <string name="alerts_v2_improved_desc">Notify when an upcoming glow probability jumps by 12%+ into your threshold</string>
+    <string name="alerts_v2_feedback_label">Post-event check-in</string>
+    <string name="alerts_v2_feedback_desc">Ask how the sky looked 25 minutes after peak color with 1-tap rating</string>
+    <string name="alerts_v2_quiet_label">Quiet hours (Do Not Disturb)</string>
+    <string name="alerts_v2_quiet_range">Silence alerts from %1$s to %2$s</string>
+    <string name="units_section_title">Units &amp; language</string>
+    <string name="units_section_subtitle">Customize temperature, visibility distance, clock format, and display language.</string>
+    <string name="unit_temperature">Temperature</string>
+    <string name="unit_distance">Distance &amp; visibility</string>
+    <string name="unit_clock">Time format</string>
+    <string name="unit_language">Language</string>
+    <string name="replay_onboarding">Replay interactive onboarding</string>
+
+    <!-- Widget -->
+    <string name="widget_name">Tonight\'s FireSky</string>
+    <string name="widget_description">Shows the next sunrise or sunset fire-sky probability and peak color window.</string>
+    <string name="widget_tonight_sunset">Tonight\'s Sunset</string>
+    <string name="widget_next_sunrise">Next Sunrise</string>
+    <string name="widget_peak_window">Peak %1$s</string>
+    <string name="chase_nearby_area">Nearby forecast</string>
+    <string name="chase_regional_estimate">Regional estimate</string>
+    <string name="chase_center_map">Center on your place</string>
+    <string name="chase_zoom_in">Zoom in</string>
+    <string name="chase_zoom_out">Zoom out</string>
+    <string name="chase_loading">Loading nearby skies…</string>
+    <string name="chase_unavailable">No regional forecast for this event</string>
+    <string name="chase_probability">Probability</string>
+    <string name="chase_intensity">Intensity</string>
+    <string name="chase_more_details">Show spot details</string>
+    <string name="chase_less_details">Hide spot details</string>
 </resources>

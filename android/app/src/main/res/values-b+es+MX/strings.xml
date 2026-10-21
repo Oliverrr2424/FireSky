@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FireSky</string>
+    <string name="title_activity_main">FireSky</string>
+    <string name="package_name">com.firesky.app</string>
+    <string name="custom_url_scheme">com.firesky.app</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_forecast">Pronóstico</string>
+    <string name="nav_chase_map">Mapa</string>
+    <string name="nav_account">Cuenta</string>
+
+    <!-- Modes & Common -->
+    <string name="mode_sunrise">Amanecer</string>
+    <string name="mode_sunset">Atardecer</string>
+    <string name="label_probability">PROBABILIDAD</string>
+    <string name="label_intensity">INTENSIDAD</string>
+    <string name="label_saved_places">Lugares guardados</string>
+    <string name="label_popular_cities">Ciudades populares</string>
+    <string name="search_placeholder">Buscar ciudades de Norteamérica</string>
+    <string name="action_search">Buscar</string>
+    <string name="action_retry">Reintentar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_open_settings">Abrir ajustes</string>
+
+    <!-- Home & Cards -->
+    <string name="todays_fire_sky">CIELO EN LLAMAS DE HOY</string>
+    <string name="outlook_7_day">Pronóstico de 7 días</string>
+    <string name="outlook_tap_hint">Toca un día para comparar la señal del modelo</string>
+    <string name="label_today">Hoy</string>
+    <string name="label_forecast">Pronóstico</string>
+    <string name="label_weather">Clima</string>
+    <string name="kicker_solar_events">Eventos solares</string>
+    <string name="kicker_blue_hour">Hora azul</string>
+    <string name="label_day_length">Duración del día</string>
+    <string name="label_peak_color">Color máximo</string>
+    <string name="label_best_duration">Mejor duración</string>
+    <string name="label_morning">Mañana</string>
+    <string name="label_evening">Tarde</string>
+    <string name="label_total">Total</string>
+    <string name="label_morning_length">Duración mañana</string>
+    <string name="label_evening_length">Duración tarde</string>
+    <string name="window_forecast_title">Ventana · Corredor solar</string>
+    <string name="label_weather_signal">Señal climática</string>
+    <string name="label_peak_window">Ventana óptima</string>
+    <string name="label_window_aqi">ICA de ventana</string>
+    <string name="label_window_visibility">Visibilidad</string>
+    <string name="factor_cloud_screen">Lienzo de nubes</string>
+    <string name="factor_blocker_clearance">Despeje bajo</string>
+    <string name="factor_solar_corridor">Corredor solar</string>
+    <string name="factor_color_chemistry">Química óptica</string>
+    <string name="factor_sun_access">Acceso solar</string>
+    <string name="factor_regional_texture">Textura regional</string>
+    <string name="factor_rain_clearance">Sin lluvia</string>
+    <string name="factor_visibility">Visibilidad</string>
+    <string name="forecast_changes_title">Cambios del pronóstico</string>
+    <string name="sun_direction_title">Dirección del sol</string>
+    <string name="precip_alert_title">Riesgo de lluvia</string>
+    <string name="save_viewpoint_cta">Guardar mirador fotográfico</string>
+    <string name="saved_viewpoints_label">Miradores guardados</string>
+    <string name="rate_tonights_sunset">CALIFICA EL ATARDECER DE HOY</string>
+    <string name="predicted_sunset_chance">Probabilidad prevista</string>
+    <string name="feedback_submitted">Comentario enviado</string>
+    <string name="action_like">Me gustó</string>
+    <string name="action_dislike">No coincidió</string>
+    <string name="local_alert_lead_time">Anticipación de alerta</string>
+    <string name="source_line_footer">PRONÓSTICO DE CLIMA Y CALIDAD DEL AIRE · 7 DÍAS</string>
+
+    <!-- Score Descriptions -->
+    <string name="score_excellent">Excelente</string>
+    <string name="score_high">Alta probabilidad</string>
+    <string name="score_possible">Posible</string>
+    <string name="score_slight">Leve</string>
+    <string name="score_unlikely">Poco probable</string>
+
+    <!-- Chase Map -->
+    <string name="chase_map_title">Mapa del cielo</string>
+    <string name="chase_map_subtitle">Toca un punto para planear tu vista.</string>
+    <string name="chase_best_spot">Mejor cerca</string>
+    <string name="chase_navigate">Navegar aquí</string>
+    <string name="chase_set_place">Usar este lugar</string>
+    <string name="chase_save_spot">Guardar mirador</string>
+    <string name="chase_selected_spot">Punto seleccionado</string>
+    <string name="chase_distance_away">A %1$s · %2$s</string>
+
+    <!-- Onboarding -->
+    <string name="onboard_skip">Omitir</string>
+    <string name="onboard_back">Atrás</string>
+    <string name="onboard_continue">Continuar</string>
+    <string name="onboard_welcome_title">Bienvenido a FireSky</string>
+    <string name="onboard_welcome_body">El cielo arde veinte minutos.\nTe decimos cuáles.</string>
+    <string name="onboard_get_started">Empezar</string>
+    <string name="onboard_terms">Al continuar aceptas los Términos de servicio y la Política de privacidad.</string>
+    <string name="onboard_value_title">La luz recorre 400 km\nantes de llegar a tu cielo.</string>
+    <string name="onboard_value_body">Leemos las nubes en ese camino para decirte si esta noche vale la pena salir.</string>
+    <string name="onboard_location_title">¿Desde dónde miras el cielo?</string>
+    <string name="onboard_location_body">Tu horizonte define el pronóstico.</string>
+    <string name="onboard_use_gps">Usar mi ubicación</string>
+    <string name="onboard_or_pick_city">o elige una ciudad</string>
+    <string name="onboard_alerts_title">¿Cuándo te avisamos?</string>
+    <string name="onboard_alerts_body">Solo cuando la probabilidad valga la pena.</string>
+    <string name="onboard_threshold_label">Probabilidad mínima</string>
+    <string name="onboard_lead_label">Aviso previo</string>
+    <string name="onboard_watch_label">Seguir</string>
+    <string name="onboard_enable_alerts_cta">Activar alertas</string>
+    <string name="onboard_skip_alerts_cta">Ahora no</string>
+    <string name="onboard_units_title">¿Cómo lees el cielo?</string>
+    <string name="onboard_units_body">Puedes cambiarlo después.</string>
+    <string name="onboard_done_title">Listo.</string>
+    <string name="onboard_done_body">Desde aquí vigilamos el horizonte.</string>
+    <string name="onboard_finish_cta">Entrar a FireSky</string>
+
+    <!-- Account & Alerts v2 -->
+    <string name="account_title_signed_in">Tu cuenta de FireSky</string>
+    <string name="account_title_guest">Iniciar sesión y preferencias</string>
+    <string name="alerts_v2_places_title">Alertas por ubicación</string>
+    <string name="alerts_v2_places_subtitle">Activa avisos de amanecer y atardecer para tu ubicación principal y tus favoritos.</string>
+    <string name="alerts_v2_improved_label">Alerta cuando mejore el pronóstico</string>
+    <string name="alerts_v2_improved_desc">Avisar si la probabilidad sube +12% o más y supera tu umbral</string>
+    <string name="alerts_v2_feedback_label">Recordatorio de evaluación</string>
+    <string name="alerts_v2_feedback_desc">Preguntar cómo estuvo el cielo 25 min después de la ventana óptima</string>
+    <string name="alerts_v2_quiet_label">Horario de no molestar</string>
+    <string name="alerts_v2_quiet_range">Silenciar alertas de %1$s a %2$s</string>
+    <string name="units_section_title">Unidades e idioma</string>
+    <string name="units_section_subtitle">Personaliza temperatura, distancia, formato de hora e idioma.</string>
+    <string name="unit_temperature">Temperatura</string>
+    <string name="unit_distance">Distancia y visibilidad</string>
+    <string name="unit_clock">Formato de hora</string>
+    <string name="unit_language">Idioma</string>
+    <string name="replay_onboarding">Volver a ver la introducción interactiva</string>
+
+    <!-- Widget -->
+    <string name="widget_name">FireSky esta noche</string>
+    <string name="widget_description">Muestra la probabilidad de cielo encendido y la ventana óptima del próximo evento.</string>
+    <string name="widget_tonight_sunset">Atardecer de hoy</string>
+    <string name="widget_next_sunrise">Próximo amanecer</string>
+    <string name="widget_peak_window">Pico %1$s</string>
+    <string name="chase_nearby_area">Pronóstico cercano</string>
+    <string name="chase_regional_estimate">Estimación regional</string>
+    <string name="chase_center_map">Volver a tu lugar</string>
+    <string name="chase_zoom_in">Acercar el mapa</string>
+    <string name="chase_zoom_out">Alejar el mapa</string>
+    <string name="chase_loading">Cargando el cielo cercano…</string>
+    <string name="chase_unavailable">Sin pronóstico regional para este evento</string>
+    <string name="chase_probability">Probabilidad</string>
+    <string name="chase_intensity">Intensidad</string>
+    <string name="chase_more_details">Mostrar detalles</string>
+    <string name="chase_less_details">Ocultar detalles</string>
+</resources>

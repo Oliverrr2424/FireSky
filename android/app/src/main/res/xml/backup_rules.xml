@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup on Android 11 and lower; mirrors data_extraction_rules.xml. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="firesky_secure.xml" />
+    <exclude domain="sharedpref" path="firesky_alerts.xml" />
+</full-backup-content>

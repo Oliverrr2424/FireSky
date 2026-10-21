@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FireSky</string>
+    <string name="title_activity_main">FireSky</string>
+    <string name="package_name">com.firesky.app</string>
+    <string name="custom_url_scheme">com.firesky.app</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_forecast">预报</string>
+    <string name="nav_chase_map">追云地图</string>
+    <string name="nav_account">账户</string>
+
+    <!-- Modes & Common -->
+    <string name="mode_sunrise">朝霞</string>
+    <string name="mode_sunset">晚霞</string>
+    <string name="label_probability">发生概率</string>
+    <string name="label_intensity">色彩强度</string>
+    <string name="label_saved_places">收藏地点</string>
+    <string name="label_popular_cities">热门城市</string>
+    <string name="search_placeholder">搜索北美城市或地区</string>
+    <string name="action_search">搜索</string>
+    <string name="action_retry">重试</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_save">保存</string>
+    <string name="action_open_settings">打开设置</string>
+
+    <!-- Home & Cards -->
+    <string name="todays_fire_sky">今日火烧云预报</string>
+    <string name="outlook_7_day">未来 7 天趋势</string>
+    <string name="outlook_tap_hint">点击日期对比每日霞光信号</string>
+    <string name="label_today">今天</string>
+    <string name="label_forecast">精准预报</string>
+    <string name="label_weather">气象趋势</string>
+    <string name="kicker_solar_events">太阳时刻</string>
+    <string name="kicker_blue_hour">蓝调时刻</string>
+    <string name="label_day_length">白昼时长</string>
+    <string name="label_peak_color">最佳烧云窗口</string>
+    <string name="label_best_duration">持续时长</string>
+    <string name="label_morning">清晨蓝调</string>
+    <string name="label_evening">傍晚蓝调</string>
+    <string name="label_total">总时长</string>
+    <string name="label_morning_length">清晨时长</string>
+    <string name="label_evening_length">傍晚时长</string>
+    <string name="window_forecast_title">霞光窗口 · 光路走廊分析</string>
+    <string name="label_weather_signal">气象信号</string>
+    <string name="label_peak_window">最佳窗口</string>
+    <string name="label_window_aqi">窗口 AQI</string>
+    <string name="label_window_visibility">窗口能见度</string>
+    <string name="factor_cloud_screen">云幕画布</string>
+    <string name="factor_blocker_clearance">低云通透度</string>
+    <string name="factor_solar_corridor">远端光路走廊</string>
+    <string name="factor_color_chemistry">气溶胶色彩</string>
+    <string name="factor_sun_access">斜射进光量</string>
+    <string name="factor_regional_texture">区域云层层次</string>
+    <string name="factor_rain_clearance">无降水干扰</string>
+    <string name="factor_visibility">大气能见度</string>
+    <string name="forecast_changes_title">模型预测演变</string>
+    <string name="sun_direction_title">太阳方位角</string>
+    <string name="precip_alert_title">降水风险</string>
+    <string name="save_viewpoint_cta">保存当前摄影机位</string>
+    <string name="saved_viewpoints_label">已存机位</string>
+    <string name="rate_tonights_sunset">评价今晚的晚霞表现</string>
+    <string name="predicted_sunset_chance">预测晚霞概率</string>
+    <string name="feedback_submitted">已提交反馈</string>
+    <string name="action_like">准 · 很美</string>
+    <string name="action_dislike">不准 · 翻车</string>
+    <string name="local_alert_lead_time">本地提醒提前量</string>
+    <string name="source_line_footer">气象与空气质量模型 · 7 天朝晚霞预测</string>
+
+    <!-- Score Descriptions -->
+    <string name="score_excellent">极佳火烧云</string>
+    <string name="score_high">大概率烧云</string>
+    <string name="score_possible">有机会出现</string>
+    <string name="score_slight">微弱霞光</string>
+    <string name="score_unlikely">概率极低</string>
+
+    <!-- Chase Map -->
+    <string name="chase_map_title">追云地图</string>
+    <string name="chase_map_subtitle">点选一处，寻找好风景。</string>
+    <string name="chase_best_spot">附近最佳</string>
+    <string name="chase_navigate">导航前往</string>
+    <string name="chase_set_place">设为主地点</string>
+    <string name="chase_save_spot">存为机位</string>
+    <string name="chase_selected_spot">已选追云点</string>
+    <string name="chase_distance_away">距当前 %1$s · %2$s</string>
+
+    <!-- Onboarding -->
+    <string name="onboard_skip">跳过</string>
+    <string name="onboard_back">返回</string>
+    <string name="onboard_continue">继续</string>
+    <string name="onboard_welcome_title">欢迎来到 FireSky</string>
+    <string name="onboard_welcome_body">天空只燃烧二十分钟。\n我们告诉你是哪二十分钟。</string>
+    <string name="onboard_get_started">开始</string>
+    <string name="onboard_terms">继续即表示你同意服务条款与隐私政策。</string>
+    <string name="onboard_value_title">光线穿行 400 公里，\n才抵达你的天空。</string>
+    <string name="onboard_value_body">我们读取沿途的云，告诉你今晚值不值得出门。</string>
+    <string name="onboard_location_title">你在哪里看天？</string>
+    <string name="onboard_location_body">你的地平线决定预报。</string>
+    <string name="onboard_use_gps">使用我的位置</string>
+    <string name="onboard_or_pick_city">或选择一座城市</string>
+    <string name="onboard_alerts_title">什么时候告诉你？</string>
+    <string name="onboard_alerts_body">只在概率足够高、值得抬头时。</string>
+    <string name="onboard_threshold_label">最低概率</string>
+    <string name="onboard_lead_label">提前</string>
+    <string name="onboard_watch_label">关注</string>
+    <string name="onboard_enable_alerts_cta">开启提醒</string>
+    <string name="onboard_skip_alerts_cta">暂不</string>
+    <string name="onboard_units_title">你习惯怎么读数？</string>
+    <string name="onboard_units_body">之后随时可以更改。</string>
+    <string name="onboard_done_title">准备好了。</string>
+    <string name="onboard_done_body">接下来，由我们守着地平线。</string>
+    <string name="onboard_finish_cta">进入 FireSky</string>
+
+    <!-- Account & Alerts v2 -->
+    <string name="account_title_signed_in">你的 FireSky 账户</string>
+    <string name="account_title_guest">登录与偏好设置</string>
+    <string name="alerts_v2_places_title">按地点设置提醒</string>
+    <string name="alerts_v2_places_subtitle">为主地点与勾选的收藏城市分别开启朝霞/晚霞守护。</string>
+    <string name="alerts_v2_improved_label">预报转好时提醒</string>
+    <string name="alerts_v2_improved_desc">当临近事件预测概率大幅跃升（+12%以上且达到门槛）时主动推送</string>
+    <string name="alerts_v2_feedback_label">烧云结束后询问反馈</string>
+    <string name="alerts_v2_feedback_desc">最佳窗口结束 25 分钟后推送通知，一键记录今晚预测是否准确</string>
+    <string name="alerts_v2_quiet_label">免打扰时段</string>
+    <string name="alerts_v2_quiet_range">在 %1$s 至 %2$s 期间静音非紧急提醒</string>
+    <string name="units_section_title">单位与多语言</string>
+    <string name="units_section_subtitle">切换温度、能见度距离、12/24 小时制与界面语言。</string>
+    <string name="unit_temperature">温度单位</string>
+    <string name="unit_distance">距离与能见度</string>
+    <string name="unit_clock">时间制式</string>
+    <string name="unit_language">界面语言</string>
+    <string name="replay_onboarding">重新体验产品引导</string>
+
+    <!-- Widget -->
+    <string name="widget_name">今晚火烧云机会</string>
+    <string name="widget_description">在桌面实时显示下一场朝霞或晚霞的概率与最佳色彩窗口。</string>
+    <string name="widget_tonight_sunset">今晚晚霞</string>
+    <string name="widget_next_sunrise">明早朝霞</string>
+    <string name="widget_peak_window">最佳 %1$s</string>
+    <string name="chase_nearby_area">周边预报范围</string>
+    <string name="chase_regional_estimate">区域预估</string>
+    <string name="chase_center_map">回到当前地点</string>
+    <string name="chase_zoom_in">放大地图</string>
+    <string name="chase_zoom_out">缩小地图</string>
+    <string name="chase_loading">正在加载周边预报…</string>
+    <string name="chase_unavailable">本场暂无周边预报</string>
+    <string name="chase_probability">概率</string>
+    <string name="chase_intensity">强度</string>
+    <string name="chase_more_details">展开地点详情</string>
+    <string name="chase_less_details">收起地点详情</string>
+</resources>
