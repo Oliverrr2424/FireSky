@@ -4,6 +4,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -11,10 +13,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -22,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -31,6 +37,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +53,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -79,9 +90,14 @@ data class SettingsPatch(
     val sunsetAlerts: Boolean? = null,
 )
 
+private val ErrorText = Color(0xFFFFD2CF)
+
 @Composable
 fun AccountPage(
     state: UiState,
+    notificationsActive: Boolean,
+    notificationsBlocked: Boolean,
+    onOpenNotificationSettings: () -> Unit,
     onClose: () -> Unit,
     onSignInPassword: (String, String, String, String?) -> Unit,
     onGoogle: () -> Unit,
@@ -93,13 +109,19 @@ fun AccountPage(
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxWidth < 800.dp
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(
+            // The status-bar inset sits outside the scroll so scrolled content never draws under the status icons.
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
+            contentAlignment = Alignment.TopCenter,
+        ) {
             Column(
                 modifier = Modifier
                     .widthIn(max = 1180.dp)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
                     .padding(
                         horizontal = if (compact) 14.dp else 32.dp,
                         vertical = if (compact) 14.dp else 32.dp,
@@ -114,6 +136,9 @@ fun AccountPage(
                     AccountContent(
                         state = state,
                         compact = true,
+                        notificationsActive = notificationsActive,
+                        notificationsBlocked = notificationsBlocked,
+                        onOpenNotificationSettings = onOpenNotificationSettings,
                         onSignInPassword = onSignInPassword,
                         onGoogle = onGoogle,
                         onSignOut = onSignOut,
@@ -133,6 +158,9 @@ fun AccountPage(
                             state = state,
                             compact = false,
                             modifier = Modifier.weight(1.28f),
+                            notificationsActive = notificationsActive,
+                            notificationsBlocked = notificationsBlocked,
+                            onOpenNotificationSettings = onOpenNotificationSettings,
                             onSignInPassword = onSignInPassword,
                             onGoogle = onGoogle,
                             onSignOut = onSignOut,
@@ -151,18 +179,26 @@ fun AccountPage(
 @Composable
 private fun AccountTopBar(compact: Boolean, onClose: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(if (compact) 48.dp else 56.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = if (compact) 48.dp else 56.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val interactionSource = remember { MutableInteractionSource() }
         Box(
             modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(SurfaceControl)
-                .clickable(onClick = onClose),
+                .size(48.dp)
+                .clickable(interactionSource = interactionSource, indication = null, role = Role.Button, onClick = onClose),
             contentAlignment = Alignment.Center,
         ) {
-            LucideIcon(R.drawable.ic_chevron_left, "Back to forecast", tint = TextPrimary, size = 22.dp)
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(SurfaceControl)
+                    .indication(interactionSource, ripple()),
+                contentAlignment = Alignment.Center,
+            ) {
+                LucideIcon(R.drawable.ic_chevron_left, "Back to forecast", tint = TextPrimary, size = 22.dp)
+            }
         }
         Row(
             modifier = Modifier.weight(1f),
@@ -185,7 +221,7 @@ private fun AccountTopBar(compact: Boolean, onClose: () -> Unit) {
                 letterSpacing = (-0.5).sp,
             )
         }
-        Spacer(Modifier.width(44.dp))
+        Spacer(Modifier.width(48.dp))
     }
 }
 
@@ -221,6 +257,9 @@ private fun AccountContent(
     state: UiState,
     compact: Boolean,
     modifier: Modifier = Modifier,
+    notificationsActive: Boolean,
+    notificationsBlocked: Boolean,
+    onOpenNotificationSettings: () -> Unit,
     onSignInPassword: (String, String, String, String?) -> Unit,
     onGoogle: () -> Unit,
     onSignOut: () -> Unit,
@@ -237,7 +276,7 @@ private fun AccountContent(
         if (user != null) {
             AccountIdentitySection(state, user, compact)
             ProfileSection(user, compact, onSaveProfile)
-            AlertsSection(state, compact, onSettingsChanged)
+            AlertsSection(state, compact, notificationsActive, notificationsBlocked, onOpenNotificationSettings, onSettingsChanged)
             SecuritySection(state, user, compact, onSignOut, onChangePassword, onDelete)
         } else {
             SignInSection(state, compact, onSignInPassword, onGoogle)
@@ -394,15 +433,47 @@ private fun ProfileSection(user: AccountUser, compact: Boolean, onSaveProfile: (
 }
 
 @Composable
-private fun AlertsSection(state: UiState, compact: Boolean, onSettingsChanged: (SettingsPatch) -> Unit) {
+private fun AlertsSection(
+    state: UiState,
+    compact: Boolean,
+    notificationsActive: Boolean,
+    notificationsBlocked: Boolean,
+    onOpenNotificationSettings: () -> Unit,
+    onSettingsChanged: (SettingsPatch) -> Unit,
+) {
     AccountSection(compact) {
         SectionHeading("Forecast alerts", "Choose when FireSky should notify you.")
         ToggleRow(
             label = "Enable notifications",
             icon = R.drawable.ic_bell,
-            checked = state.notificationsEnabled,
+            checked = notificationsActive,
             onCheckedChange = { onSettingsChanged(SettingsPatch(notificationsEnabled = it)) },
         )
+        if (notificationsBlocked) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0x40752834))
+                    .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                LucideIcon(R.drawable.ic_bell_off, null, tint = ErrorText, size = 16.dp)
+                Text(
+                    "Android is blocking FireSky notifications, so alerts can't appear.",
+                    color = ErrorText,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                )
+                TextButton(onClick = onOpenNotificationSettings) {
+                    Text("Open settings", color = Color(0xFFFFD76A), fontSize = 13.sp, fontWeight = FontWeight.W600)
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
         Spacer(Modifier.height(16.dp))
         if (compact) {
@@ -724,12 +795,12 @@ private fun AccountSelect(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(SurfaceControl)
                     .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(16.dp))
-                    .clickable { expanded = true }
-                    .padding(horizontal = 14.dp),
+                    .clickable(role = Role.DropdownList, onClickLabel = "Change $label") { expanded = true }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(valueLabel, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
@@ -761,7 +832,9 @@ private fun ToggleRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .heightIn(min = 48.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .semantics { stateDescription = if (checked) "On" else "Off" }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -858,7 +931,7 @@ private fun AccountNotice(text: String, error: Boolean) {
     ) {
         Text(
             text,
-            color = if (error) Color(0xFFFFD2CF) else Color(0xFFC7F4D8),
+            color = if (error) ErrorText else Color(0xFFC7F4D8),
             fontSize = 13.sp,
             lineHeight = 18.sp,
         )
