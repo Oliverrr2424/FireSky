@@ -2,6 +2,8 @@ package com.firesky.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,11 +15,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +35,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,6 +119,10 @@ fun SurfaceControlBox(
     )
 }
 
+/**
+ * A round icon button. The visible circle is [size], but the button always reserves a 48dp touch target.
+ * Pass [checked] for on/off controls so accessibility services announce them as switches.
+ */
 @Composable
 fun ControlIconButton(
     painter: Painter,
@@ -117,17 +130,11 @@ fun ControlIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    checked: Boolean? = null,
     size: Dp = 34.dp,
     iconSize: Dp = 18.dp,
 ) {
-    Box(
-        modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(if (selected) Color(0x4DFFFFFF) else SurfaceControl)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
+    ControlIconButtonFrame(onClick, modifier, selected, checked, size) {
         Icon(
             painter = painter,
             contentDescription = contentDescription,
@@ -144,17 +151,11 @@ fun ControlIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    checked: Boolean? = null,
     size: Dp = 34.dp,
     iconSize: Dp = 18.dp,
 ) {
-    Box(
-        modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(if (selected) Color(0x4DFFFFFF) else SurfaceControl)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
+    ControlIconButtonFrame(onClick, modifier, selected, checked, size) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
@@ -163,6 +164,55 @@ fun ControlIconButton(
         )
     }
 }
+
+@Composable
+private fun ControlIconButtonFrame(
+    onClick: () -> Unit,
+    modifier: Modifier,
+    selected: Boolean,
+    checked: Boolean?,
+    size: Dp,
+    content: @Composable () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val interaction = if (checked != null) {
+        Modifier
+            .toggleable(
+                value = checked,
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Switch,
+                onValueChange = { onClick() },
+            )
+            .semantics { stateDescription = if (checked) "On" else "Off" }
+    } else {
+        Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            role = Role.Button,
+            onClick = onClick,
+        )
+    }
+    Box(
+        modifier = modifier
+            .sizeIn(minWidth = MinTouchTarget, minHeight = MinTouchTarget)
+            .then(interaction),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(if (selected) Color(0x4DFFFFFF) else SurfaceControl)
+                .indication(interactionSource, ripple()),
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
+    }
+}
+
+val MinTouchTarget = 48.dp
 
 @Composable
 fun LucideIcon(
