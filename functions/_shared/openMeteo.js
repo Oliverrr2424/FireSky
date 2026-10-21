@@ -265,7 +265,7 @@ export function makeGridUrl(place, samples = createGridPlaces(place)) {
     longitude: samples.map((sample) => sample.longitude).join(','),
     hourly: WEATHER_VARS,
     daily: DAILY_VARS,
-    forecast_days: '1',
+    forecast_days: '2',
     timezone: 'auto',
     wind_speed_unit: 'kmh'
   });
