@@ -103,6 +103,7 @@ import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 private const val HEAT_ENABLED = true
@@ -767,7 +768,20 @@ private class HeatMapController(
     }
 
     fun zoomBy(delta: Double, focusX: Float, focusY: Float) {
-        map.moveCamera(CameraUpdateFactory.zoomBy(delta, android.graphics.Point(focusX.toInt(), focusY.toInt())))
+        val camera = map.cameraPosition
+        val target = camera.target ?: return
+        val zoom = (camera.zoom + delta).coerceIn(map.minZoomLevel, map.maxZoomLevel)
+        if (zoom == camera.zoom) return
+        val scale = 2.0.pow(zoom - camera.zoom).toFloat()
+        val center = map.projection.toScreenLocation(target)
+        // zoomBy(delta, focus) recenters on focus on every event. Instead move
+        // the center only far enough to keep the point under the fingers fixed.
+        val nextTarget = map.projection.fromScreenLocation(
+            PointF(focusX + (center.x - focusX) / scale, focusY + (center.y - focusY) / scale),
+        )
+        map.moveCamera(
+            CameraUpdateFactory.newCameraPosition(CameraPosition.Builder(camera).target(nextTarget).zoom(zoom).build()),
+        )
     }
 
     /** Selects the sample nearest a tap given in MapView pixels. */

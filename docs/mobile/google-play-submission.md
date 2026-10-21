@@ -11,7 +11,7 @@
 ## Permissions
 - Location permission must be justified in store listing and in-app usage.
 - The app requests foreground location only; no `ACCESS_BACKGROUND_LOCATION` permission is declared.
-- `POST_NOTIFICATIONS` is requested only after the user enables alerts. Explain that alerts cover forecast probability changes for the selected sunrise/sunset window.
+- `POST_NOTIFICATIONS` is requested only after the user enables alerts. Explain that alerts cover upcoming sunrise/sunset windows meeting the selected probability threshold.
 - `SCHEDULE_EXACT_ALARM` backs on-time alert delivery. From Android 12 the user can revoke "Alarms & reminders"; FireSky then falls back to inexact alarms that may arrive up to an hour late and offers a shortcut to that system setting.
 - `RECEIVE_BOOT_COMPLETED` re-arms the saved alert plan after a reboot or app update.
 
