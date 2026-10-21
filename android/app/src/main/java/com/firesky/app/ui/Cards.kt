@@ -3,12 +3,16 @@ package com.firesky.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -17,12 +21,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +38,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -90,15 +99,16 @@ fun HeroCard(state: UiState, outlook: Forecast, modifier: Modifier = Modifier) {
                     LucideIcon(R.drawable.ic_sparkles, null, tint = TextSecondary, size = 14.dp)
                     Text(
                         text = if (state.selectedDayIndex == 0) {
-                            "TODAY'S FIRE SKY FORECAST"
+                            "TODAY'S FIRE SKY"
                         } else {
                             formatDayTitle(outlook)
                         },
                         color = TextSecondary,
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.W700,
-                        letterSpacing = 0.9.sp,
-                        maxLines = 1,
+                        letterSpacing = 0.7.sp,
+                        lineHeight = 14.sp,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -214,7 +224,7 @@ fun ForecastStrip(
                     Text(
                         label,
                         color = TextSecondary,
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -229,7 +239,8 @@ fun ForecastStrip(
                     Text(
                         if (index == 0) "Forecast" else "Weather",
                         color = TextSecondary,
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
+                        maxLines = 1,
                     )
                 }
             }
@@ -382,9 +393,10 @@ private fun AstroColumn(
                             label.uppercase(Locale.US),
                             color = TextMuted,
                             fontFamily = DisplayFamily,
-                            fontSize = 9.sp,
-                            letterSpacing = 0.65.sp,
+                            fontSize = 11.sp,
+                            letterSpacing = 0.5.sp,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Spacer(Modifier.height(3.dp))
                         Text(
@@ -419,7 +431,8 @@ fun MetricRail(activeMode: String, data: Forecast, columns: Int = 2) {
         Column {
             val rowCount = (items.size + columns - 1) / columns
             for (rowIndex in 0 until rowCount) {
-                Row(Modifier.fillMaxWidth()) {
+                // Cells in a row share the tallest cell's height so the hairline borders stay aligned.
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                     for (columnIndex in 0 until columns) {
                         val index = rowIndex * columns + columnIndex
                         val item = items.getOrNull(index) ?: continue
@@ -449,7 +462,8 @@ private fun RailCell(
 ) {
     Column(
         modifier = modifier
-            .height(52.dp)
+            .fillMaxHeight()
+            .heightIn(min = 52.dp)
             .background(Color.Transparent)
             .drawBorders(showStartBorder, showTopBorder)
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -561,10 +575,11 @@ private fun ScoreTile(label: String, value: String, modifier: Modifier = Modifie
             label.uppercase(Locale.US),
             color = TextMuted,
             fontFamily = DisplayFamily,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.W800,
-            letterSpacing = 0.7.sp,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.W700,
+            letterSpacing = 0.5.sp,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(2.dp))
         Text(
@@ -755,7 +770,7 @@ private fun SaveViewpointButton(onSaveViewpoint: (String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 10.dp)
-            .height(44.dp)
+            .heightIn(min = 48.dp)
             .clip(CircleShape)
             .background(Color(0x24FFFFFF))
             .clickable {
@@ -896,6 +911,7 @@ fun FeedbackCard(
     onToggleReaction: (String) -> Unit,
     onEditing: (Boolean) -> Unit,
     onAlertLead: (Int) -> Unit,
+    onAllowExactAlarms: (() -> Unit)? = null,
 ) {
     val day = state.sunsetDay ?: "--"
     val feedback = state.sunsetFeedback
@@ -910,7 +926,7 @@ fun FeedbackCard(
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "DAILY SUNSET FEEDBACK",
+                    "RATE TONIGHT'S SUNSET",
                     color = TextSecondary,
                     fontSize = 12.sp,
                     letterSpacing = 0.7.sp,
@@ -920,7 +936,7 @@ fun FeedbackCard(
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Predicted chance", color = TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("Predicted sunset chance", color = TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 Text(
                     "${Math.round(outlook.scores.sunset.probability)}%",
                     color = Color.White,
@@ -932,7 +948,7 @@ fun FeedbackCard(
             Spacer(Modifier.height(9.dp))
             if (hasFeedback && !state.feedbackEditing) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -948,23 +964,47 @@ fun FeedbackCard(
                         fontSize = 12.sp,
                     )
                     Spacer(Modifier.weight(1f))
+                    val updateInteraction = remember { MutableInteractionSource() }
                     Box(
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(Color(0x1AFFFFFF))
-                            .clickable { onEditing(true) }
-                            .padding(horizontal = 11.dp, vertical = 7.dp),
+                            .heightIn(min = 48.dp)
+                            .clickable(
+                                interactionSource = updateInteraction,
+                                indication = null,
+                                role = Role.Button,
+                                onClickLabel = "Update sunset feedback",
+                                onClick = { onEditing(true) },
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text("Update", color = TextSecondary, fontSize = 12.sp)
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color(0x1AFFFFFF))
+                                .indication(updateInteraction, ripple())
+                                .padding(horizontal = 11.dp, vertical = 7.dp),
+                        ) {
+                            Text("Update", color = TextSecondary, fontSize = 12.sp)
+                        }
                     }
                 }
             } else {
+                // 48dp tall for touch; the visible 44dp track is drawn inset.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(CircleShape)
-                        .background(Color(0x0FFFFFFF))
-                        .padding(3.dp),
+                        .height(48.dp)
+                        .drawBehind {
+                            val inset = 2.dp.toPx()
+                            val trackHeight = size.height - inset * 2
+                            drawRoundRect(
+                                color = Color(0x0FFFFFFF),
+                                topLeft = Offset(0f, inset),
+                                size = Size(size.width, trackHeight),
+                                cornerRadius = CornerRadius(trackHeight / 2),
+                            )
+                        }
+                        .padding(horizontal = 3.dp),
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     ReactionButton(
@@ -998,6 +1038,10 @@ fun FeedbackCard(
                     onSelect = onAlertLead,
                 )
             }
+            if (onAllowExactAlarms != null) {
+                Spacer(Modifier.height(6.dp))
+                ExactAlarmNotice(onAllowExactAlarms)
+            }
             Spacer(Modifier.height(14.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
             Spacer(Modifier.height(14.dp))
@@ -1018,6 +1062,18 @@ fun FeedbackCard(
     }
 }
 
+/** Shown while alerts are on but Android has not granted "Alarms & reminders" access. */
+@Composable
+fun ExactAlarmNotice(onAllow: () -> Unit, modifier: Modifier = Modifier) {
+    InlineNotice(
+        iconRes = R.drawable.ic_clock_3,
+        text = "Alerts may arrive up to an hour late.",
+        actionLabel = "Allow on-time alerts",
+        onAction = onAllow,
+        modifier = modifier,
+    )
+}
+
 @Composable
 private fun ReactionButton(
     label: String,
@@ -1026,12 +1082,21 @@ private fun ReactionButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Row(
         modifier = modifier
-            .height(38.dp)
+            .fillMaxHeight()
+            .selectable(
+                selected = selected,
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(vertical = 5.dp)
             .clip(CircleShape)
             .background(if (selected) SurfaceInset else Color.Transparent)
-            .clickable(onClick = onClick),
+            .indication(interactionSource, ripple()),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1050,12 +1115,23 @@ private fun ReactionButton(
 fun SelectPill(value: Int, options: List<Pair<Int, String>>, onSelect: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val label = options.firstOrNull { it.first == value }?.second ?: "$value"
-    Box {
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.DropdownList,
+                onClick = { expanded = true },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
         Row(
             modifier = Modifier
                 .clip(CircleShape)
                 .background(Color(0x1FFFFFFF))
-                .clickable { expanded = true }
+                .indication(interactionSource, ripple())
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -1282,10 +1282,11 @@ async function fetchGrid(place, mode, { force = false } = {}) {
 async function geocodeCity(query) {
   const normalizedQuery = query.trim();
   if (normalizedQuery.length < 2) return [];
-  const key = textCacheKey('geocode', normalizedQuery);
+  const lang = typeof navigator !== 'undefined' ? (navigator.language || 'en').split('-')[0].toLowerCase() : 'en';
+  const key = textCacheKey('geocode', `${lang}:${normalizedQuery}`);
   const cached = cacheGet(key, GEOCODE_CACHE_TTL_MS);
   if (cached) return cached;
-  const params = new URLSearchParams({ q: normalizedQuery });
+  const params = new URLSearchParams({ q: normalizedQuery, lang });
   const results = await fetchJson(`${API_BASE_URL}/api/geocode?${params}`, 'Location search');
   cacheSet(key, results);
   return results;

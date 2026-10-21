@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -99,14 +101,18 @@ fun ScoreRing(
     val current = animated.value
     val accent = scoreSpectrumColor(current.toDouble())
 
+    val spokenScore = "${target.roundToInt()} percent, $label"
     BoxWithConstraints(
-        modifier = modifier.aspectRatio(1.56f),
+        modifier = modifier
+            .aspectRatio(1.56f)
+            // Read the final score once instead of the animating digits and the separate "%" glyph.
+            .clearAndSetSemantics { contentDescription = spokenScore },
         contentAlignment = Alignment.BottomCenter,
     ) {
         val ringWidth = maxWidth
         val valueSize = (ringWidth.value * 0.19f).coerceIn(26f, 54f).sp
         val percentSize = (ringWidth.value * 0.075f).coerceIn(10f, 20f).sp
-        val labelSize = (ringWidth.value * 0.065f).coerceIn(8.5f, 15.5f).sp
+        val labelSize = (ringWidth.value * 0.065f).coerceIn(11f, 15.5f).sp
 
         Canvas(Modifier.fillMaxSize()) {
             val scale = min(size.width / 320f, size.height / 206f)

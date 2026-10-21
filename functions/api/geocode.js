@@ -4,6 +4,7 @@ import {
   fetchOpenMeteoJson,
   jsonResponse,
   makeGeocodeUrl,
+  normalizeGeocodeLanguage,
   textCacheKey,
   ttl
 } from '../_shared/openMeteo.js';
@@ -16,9 +17,10 @@ export async function onRequestGet({ request, env }) {
       return errorResponse('Search query must be between 2 and 80 characters', 400);
     }
 
-    const key = textCacheKey('geocode', query);
+    const lang = normalizeGeocodeLanguage(url.searchParams.get('lang'));
+    const key = textCacheKey('geocode', `${lang}:${query}`);
     const { value, cacheStatus } = await cachedJson(env, key, async () => {
-      const data = await fetchOpenMeteoJson(makeGeocodeUrl(query), 'Location search');
+      const data = await fetchOpenMeteoJson(makeGeocodeUrl(query, lang), 'Location search');
       return (data.results ?? []).filter((place) => ['US', 'CA', 'MX'].includes(place.country_code));
     }, {
       freshTtl: ttl.geocodeFresh,
