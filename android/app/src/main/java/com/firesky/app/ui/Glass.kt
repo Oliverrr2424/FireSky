@@ -1,5 +1,6 @@
 package com.firesky.app.ui
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
@@ -45,6 +46,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.firesky.app.ui.icons.AnimatedIcon
+import com.firesky.app.ui.icons.IconMotions
+import com.firesky.app.ui.icons.IconPulse
+import com.firesky.app.ui.icons.rememberIconPulse
+import com.firesky.app.ui.icons.tapPulse
 import com.firesky.app.ui.theme.DisplayFamily
 import com.firesky.app.ui.theme.SurfaceControl
 import com.firesky.app.ui.theme.SurfaceHairline
@@ -126,7 +132,7 @@ fun SurfaceControlBox(
  */
 @Composable
 fun ControlIconButton(
-    painter: Painter,
+    @DrawableRes iconRes: Int,
     contentDescription: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -135,12 +141,14 @@ fun ControlIconButton(
     size: Dp = 34.dp,
     iconSize: Dp = 18.dp,
 ) {
-    ControlIconButtonFrame(onClick, modifier, selected, checked, size) {
-        Icon(
-            painter = painter,
+    ControlIconButtonFrame(onClick, modifier, selected, checked, size) { pulse ->
+        AnimatedIcon(
+            resId = iconRes,
             contentDescription = contentDescription,
-            tint = if (selected) TextPrimary else TextSecondary,
             modifier = Modifier.size(iconSize),
+            tint = if (selected) TextPrimary else TextSecondary,
+            pulse = pulse,
+            playOnTap = false,
         )
     }
 }
@@ -156,12 +164,15 @@ fun ControlIconButton(
     size: Dp = 34.dp,
     iconSize: Dp = 18.dp,
 ) {
-    ControlIconButtonFrame(onClick, modifier, selected, checked, size) {
-        Icon(
-            imageVector = icon,
+    ControlIconButtonFrame(onClick, modifier, selected, checked, size) { pulse ->
+        AnimatedIcon(
+            vector = icon,
+            motion = IconMotions.fallback,
             contentDescription = contentDescription,
-            tint = if (selected) TextPrimary else TextSecondary,
             modifier = Modifier.size(iconSize),
+            tint = if (selected) TextPrimary else TextSecondary,
+            pulse = pulse,
+            playOnTap = false,
         )
     }
 }
@@ -173,9 +184,10 @@ private fun ControlIconButtonFrame(
     selected: Boolean,
     checked: Boolean?,
     size: Dp,
-    content: @Composable () -> Unit,
+    content: @Composable (IconPulse) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val pulse = rememberIconPulse()
     val interaction = if (checked != null) {
         Modifier
             .toggleable(
@@ -197,6 +209,7 @@ private fun ControlIconButtonFrame(
     Box(
         modifier = modifier
             .sizeIn(minWidth = MinTouchTarget, minHeight = MinTouchTarget)
+            .tapPulse(pulse)
             .then(interaction),
         contentAlignment = Alignment.Center,
     ) {
@@ -208,13 +221,17 @@ private fun ControlIconButtonFrame(
                 .indication(interactionSource, ripple()),
             contentAlignment = Alignment.Center,
         ) {
-            content()
+            content(pulse)
         }
     }
 }
 
 val MinTouchTarget = 48.dp
 
+/**
+ * The app's icon. Tapping it plays its animation; pass a [pulse] from a button around it so a tap
+ * anywhere on the button plays it, and a [playKey] to play it when the icon's state changes.
+ */
 @Composable
 fun LucideIcon(
     resId: Int,
@@ -222,12 +239,18 @@ fun LucideIcon(
     modifier: Modifier = Modifier,
     tint: Color = TextSecondary,
     size: Dp = 18.dp,
+    pulse: IconPulse? = null,
+    playKey: Any? = null,
+    playOnAppear: Boolean = false,
 ) {
-    Icon(
-        painter = painterResource(resId),
+    AnimatedIcon(
+        resId = resId,
         contentDescription = contentDescription,
-        tint = tint,
         modifier = modifier.size(size),
+        tint = tint,
+        pulse = pulse,
+        playKey = playKey,
+        playOnAppear = playOnAppear,
     )
 }
 

@@ -47,6 +47,7 @@ export async function onRequestPost({ request, env }) {
     return accountJson(request, { token, user: { id: user.id, email: user.email, displayName: user.display_name, avatarUrl: user.avatar_url, createdAt: user.created_at } });
   } catch (error) {
     if (String(error.message).includes('UNIQUE constraint failed')) return accountError(request, 'An account already exists for this email. Sign in instead.', 409);
+    console.error('password-auth-failed', error.name, error.message);
     return accountError(request, 'Unable to complete account sign-in', 400);
   }
 }

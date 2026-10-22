@@ -269,6 +269,28 @@ const DEFAULT_PLACE = {
   longitude: -122.4194
 };
 
+// A shared link (/?lat=43.65&lon=-79.38&name=Toronto&region=Ontario&mode=sunset) opens that
+// place and event instead of the default, so the people a forecast is shared with land on it.
+function sharedLinkTarget() {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('lat') || !params.has('lon')) return null;
+  const latitude = Number(params.get('lat'));
+  const longitude = Number(params.get('lon'));
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  return {
+    place: {
+      name: (params.get('name') || 'Shared place').slice(0, 80),
+      admin1: (params.get('region') || '').slice(0, 80),
+      country_code: 'US',
+      latitude: +latitude.toFixed(4),
+      longitude: +longitude.toFixed(4)
+    },
+    mode: params.get('mode') === 'sunrise' ? 'sunrise' : 'sunset'
+  };
+}
+const SHARED_TARGET = sharedLinkTarget();
+
 const PRESETS = [
   { name: 'San Francisco', admin1: 'California', latitude: 37.7749, longitude: -122.4194, country_code: 'US' },
   { name: 'New York', admin1: 'New York', latitude: 40.7128, longitude: -74.006, country_code: 'US' },
@@ -2108,8 +2130,8 @@ function SavedPlacesBar({ favorites, place, onSelect }) {
 
 function App() {
   const savedSettings = useMemo(() => loadMobileSettings(), []);
-  const [place, setPlace] = useState(DEFAULT_PLACE);
-  const [activeMode, setActiveMode] = useState('sunset');
+  const [place, setPlace] = useState(SHARED_TARGET?.place || DEFAULT_PLACE);
+  const [activeMode, setActiveMode] = useState(SHARED_TARGET?.mode || 'sunset');
   const [data, setData] = useState(null);
   const [grid, setGrid] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -2134,7 +2156,7 @@ function App() {
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const loadSeq = useRef(0);
-  const userSelectedModeRef = useRef(false);
+  const userSelectedModeRef = useRef(Boolean(SHARED_TARGET));
   const nativeAuthRef = useRef({ listener: null, setup: null });
 
   const title = `${place.name}${place.admin1 ? ` · ${place.admin1}` : ''}`;
@@ -2643,9 +2665,19 @@ function App() {
     const score = Math.round(selectedOutlook.scores[activeMode].probability ?? 0);
     const window = selectedOutlook.appearanceWindow?.[activeMode];
     const text = `${title}: ${activeMode === 'sunset' ? 'Sunset' : 'Sunrise'} chance is ${score}%${window ? ` · Best window ${formatRange(window.start, window.end, selectedOutlook.timeZone)}` : ''}.`;
+    // The link opens this same place and event, so whoever receives it can use FireSky right away.
+    const link = new URL('https://fireskychase.pages.dev/');
+    link.search = new URLSearchParams({
+      lat: String(place.latitude),
+      lon: String(place.longitude),
+      name: place.name,
+      ...(place.admin1 ? { region: place.admin1 } : {}),
+      mode: activeMode,
+      utm_source: 'web_share'
+    }).toString();
     try {
-      if (navigator.share) await navigator.share({ title: 'FireSky forecast', text });
-      else await navigator.clipboard?.writeText(text);
+      if (navigator.share) await navigator.share({ title: 'FireSky forecast', text, url: link.toString() });
+      else await navigator.clipboard?.writeText(`${text} ${link}`);
       telemetry('forecast_shared', { mode: activeMode, score });
     } catch {
       /* User cancellation is expected and should remain silent. */

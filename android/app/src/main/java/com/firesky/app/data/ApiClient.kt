@@ -41,6 +41,12 @@ class ApiClient(private val store: Store) {
         .callTimeout(15, TimeUnit.SECONDS)
         .build()
 
+    // A photo is a few hundred KB; give a slow mobile connection longer than the JSON calls get.
+    private val uploadClient: OkHttpClient = client.newBuilder()
+        .writeTimeout(40, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
+        .build()
+
     private val gridClient: OkHttpClient = client.newBuilder()
         .readTimeout(45, TimeUnit.SECONDS)
         .callTimeout(52, TimeUnit.SECONDS)
@@ -339,6 +345,33 @@ class ApiClient(private val store: Store) {
         accountRequest("/api/sync", token, "PUT", body)
     }
 
+    fun viewpointPhotoUrl(photoId: String): String = "$baseUrl/api/viewpoint-photos/$photoId"
+
+    /** Uploads one viewpoint photo under a client-chosen id; sending the same id again replaces it. */
+    suspend fun uploadViewpointPhoto(token: String, photoId: String, jpeg: ByteArray, width: Int, height: Int) {
+        val request = Request.Builder()
+            .url("$baseUrl/api/viewpoint-photos?id=$photoId&width=$width&height=$height")
+            .header("Authorization", "Bearer $token")
+            .post(jpeg.toRequestBody("image/jpeg".toMediaType()))
+            .build()
+        val response = try {
+            uploadClient.newCall(request).await()
+        } catch (error: IOException) {
+            throw friendlyError(error, "your photo")
+        }
+        response.use { result ->
+            if (!result.isSuccessful) {
+                val message = runCatching { JSONObject(result.body?.string().orEmpty()).optString("error") }.getOrDefault("")
+                    .ifBlank { "The photo couldn't be uploaded (error ${result.code})." }
+                throw ApiException(message, result.code >= 500 || result.code == 429, result.code)
+            }
+        }
+    }
+
+    suspend fun deleteViewpointPhoto(token: String, photoId: String) {
+        accountRequest("/api/viewpoint-photos/$photoId", token, "DELETE")
+    }
+
     suspend fun passwordAuth(
         action: String,
         email: String,
@@ -378,6 +411,22 @@ class ApiClient(private val store: Store) {
         return payload.optString("token").ifBlank { throw ApiException("Sign in did not return a session") }
     }
 
+    private fun reactionSummary(payload: JSONObject): ReactionSummary {
+        val counts = payload.optJSONObject("counts")
+        val mine = payload.optJSONObject("mine")
+        return ReactionSummary(
+            like = counts?.optInt("like") ?: 0,
+            dislike = counts?.optInt("dislike") ?: 0,
+            mineSentiment = mine?.optNullableString("sentiment"),
+            mineReason = mine?.optNullableString("reason"),
+        )
+    }
+
+    /** Counts are public; a signed-in token also brings back this account's own reaction. */
+    suspend fun fetchReactions(token: String, eventAt: Long, mode: String, latitude: Double, longitude: Double): ReactionSummary =
+        reactionSummary(accountRequest("/api/feedback?eventAt=$eventAt&mode=$mode&lat=$latitude&lon=$longitude", token))
+
+    /** A null [sentiment] withdraws the reaction. */
     suspend fun postFeedback(
         token: String,
         eventAt: Long,
@@ -386,9 +435,9 @@ class ApiClient(private val store: Store) {
         latitude: Double,
         longitude: Double,
         probability: Double,
-        outcome: String,
         sentiment: String?,
-    ) {
+        reason: String?,
+    ): ReactionSummary {
         val body = JSONObject()
             .put("eventAt", eventAt)
             .put("mode", mode)
@@ -396,9 +445,9 @@ class ApiClient(private val store: Store) {
             .put("latitude", latitude)
             .put("longitude", longitude)
             .put("probability", probability)
-            .put("outcome", outcome)
             .put("sentiment", sentiment ?: JSONObject.NULL)
-        accountRequest("/api/feedback", token, "POST", body)
+            .put("reason", reason ?: JSONObject.NULL)
+        return reactionSummary(accountRequest("/api/feedback", token, "POST", body))
     }
 
     suspend fun fetchRegionalHistory(place: Place, date: String, mode: String): JSONObject {

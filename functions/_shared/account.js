@@ -1,3 +1,6 @@
+import { pbkdf2Async } from '@noble/hashes/pbkdf2.js';
+import { sha256 as sha256Hash } from '@noble/hashes/sha2.js';
+
 const SESSION_DAYS = 30;
 
 export function corsHeaders(request, extra = {}) {
@@ -52,8 +55,9 @@ function base64Bytes(value) {
 }
 
 export async function passwordHash(password, salt, iterations = 180000) {
-  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: base64Bytes(salt), iterations }, material, 256);
+  // Some Workers runtimes cap native PBKDF2 at 100,000 iterations. Use the
+  // audited portable implementation without changing the credential format.
+  const bits = await pbkdf2Async(sha256Hash, password, base64Bytes(salt), { c: iterations, dkLen: 32 });
   return base64(bits);
 }
 

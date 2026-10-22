@@ -1,5 +1,12 @@
 package com.firesky.app.ui
 
+import com.firesky.app.ui.icons.tapPulse
+import com.firesky.app.ui.icons.rememberIconPulse
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -13,6 +20,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -30,10 +38,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,12 +53,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.firesky.app.BuildConfig
 import com.firesky.app.R
 import com.firesky.app.UiState
 import com.firesky.app.data.AppearanceWindow
@@ -57,6 +76,8 @@ import com.firesky.app.data.Factors
 import com.firesky.app.data.Forecast
 import com.firesky.app.data.ForecastSnapshot
 import com.firesky.app.data.Score
+import com.firesky.app.data.Viewpoint
+import com.firesky.app.data.ViewpointPhotos
 import com.firesky.app.data.Window
 import com.firesky.app.data.compassLabel
 import com.firesky.app.data.describeScore
@@ -80,6 +101,7 @@ import com.firesky.app.ui.theme.UiFamily
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.flow.first
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -152,14 +174,16 @@ fun HeroCard(state: UiState, outlook: Forecast, modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-fun localizedScoreLabel(score: Double): String = when {
-    score >= 85.0 -> stringResource(R.string.score_excellent)
-    score >= 70.0 -> stringResource(R.string.score_high)
-    score >= 52.0 -> stringResource(R.string.score_possible)
-    score >= 34.0 -> stringResource(R.string.score_slight)
-    else -> stringResource(R.string.score_unlikely)
+fun scoreLabelRes(score: Double): Int = when {
+    score >= 85.0 -> R.string.score_excellent
+    score >= 70.0 -> R.string.score_high
+    score >= 52.0 -> R.string.score_possible
+    score >= 34.0 -> R.string.score_slight
+    else -> R.string.score_unlikely
 }
+
+@Composable
+fun localizedScoreLabel(score: Double): String = stringResource(scoreLabelRes(score))
 
 private fun formatDayTitle(outlook: Forecast): String = try {
     DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.US)
@@ -677,7 +701,7 @@ fun TimelineCard(
     state: UiState,
     outlook: Forecast,
     activeWindow: Window,
-    onSaveViewpoint: (String) -> Unit,
+    onSaveViewpoint: (String, Uri?) -> Unit,
     onOpenViewpoint: (com.firesky.app.data.Viewpoint) -> Unit,
 ) {
     val sunBearing = state.sunBearing
@@ -728,14 +752,19 @@ fun TimelineCard(
                 state.viewpoints.take(4).forEach { viewpoint ->
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(if (viewpoint.photoId != null) 16.dp else 8.dp))
                             .background(SurfaceControl)
                             .clickable { onOpenViewpoint(viewpoint) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .padding(
+                                start = if (viewpoint.photoId != null) 4.dp else 8.dp,
+                                end = if (viewpoint.photoId != null) 10.dp else 8.dp,
+                                top = if (viewpoint.photoId != null) 4.dp else 6.dp,
+                                bottom = if (viewpoint.photoId != null) 4.dp else 6.dp,
+                            ),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        LucideIcon(R.drawable.ic_camera, null, tint = TextSecondary, size = 13.dp)
+                        ViewpointThumb(viewpoint, state.accountToken)
                         Text(viewpoint.name, color = TextPrimary, fontSize = 12.sp, maxLines = 1)
                     }
                 }
@@ -765,9 +794,14 @@ private fun FieldTool(icon: Int, title: String, value: String, note: String, war
 }
 
 @Composable
-private fun SaveViewpointButton(onSaveViewpoint: (String) -> Unit) {
+private fun SaveViewpointButton(onSaveViewpoint: (String, Uri?) -> Unit) {
     var showDialog by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
+    var photo by remember { mutableStateOf<Uri?>(null) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) photo = uri
+    }
+    val savePulse = rememberIconPulse()
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -775,34 +809,43 @@ private fun SaveViewpointButton(onSaveViewpoint: (String) -> Unit) {
             .heightIn(min = 48.dp)
             .clip(CircleShape)
             .background(Color(0x24FFFFFF))
+            .tapPulse(savePulse)
             .clickable {
                 name = ""
+                photo = null
                 showDialog = true
             },
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            LucideIcon(R.drawable.ic_camera, null, tint = TextPrimary, size = 17.dp)
+            LucideIcon(R.drawable.ic_camera, null, tint = TextPrimary, size = 17.dp, pulse = savePulse)
             Text("Save camera viewpoint", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.W600)
         }
     }
     if (showDialog) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("Name this camera viewpoint") },
+            title = { Text(stringResource(R.string.viewpoint_dialog_title)) },
             text = {
-                androidx.compose.foundation.text.BasicTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0x33000000))
-                        .padding(10.dp),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x33000000))
+                            .padding(10.dp),
+                    )
+                    ViewpointPhotoPicker(
+                        photo = photo,
+                        onPick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        onRemove = { photo = null },
+                    )
+                }
             },
             confirmButton = {
                 Text(
@@ -812,7 +855,7 @@ private fun SaveViewpointButton(onSaveViewpoint: (String) -> Unit) {
                         .clip(RoundedCornerShape(8.dp))
                         .clickable {
                             if (name.trim().isNotEmpty()) {
-                                onSaveViewpoint(name)
+                                onSaveViewpoint(name, photo)
                                 showDialog = false
                             }
                         }
@@ -832,11 +875,108 @@ private fun SaveViewpointButton(onSaveViewpoint: (String) -> Unit) {
     }
 }
 
+/** Empty: a tappable "add a photo" row. Chosen: a preview with replace and remove. */
+@Composable
+private fun ViewpointPhotoPicker(photo: Uri?, onPick: () -> Unit, onRemove: () -> Unit) {
+    val pickPulse = rememberIconPulse()
+    if (photo == null) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0x1FFFFFFF))
+                .tapPulse(pickPulse)
+                .clickable(role = Role.Button, onClick = onPick)
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            LucideIcon(R.drawable.ic_image_plus, null, tint = TextPrimary, size = 22.dp, pulse = pickPulse)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.viewpoint_add_photo), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.W600)
+                Text(stringResource(R.string.viewpoint_add_photo_hint), color = TextMuted, fontSize = 11.sp, lineHeight = 14.sp)
+            }
+        }
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(14.dp)),
+        ) {
+            AsyncImage(
+                model = photo,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Row(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PhotoAction(stringResource(R.string.viewpoint_replace_photo), onPick)
+                PhotoAction(stringResource(R.string.viewpoint_remove_photo), onRemove)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhotoAction(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = Color.White,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.W600,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(Color(0x99000000))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    )
+}
+
+/** A saved viewpoint's photo as a small round thumbnail; the local copy first, otherwise the signed-in cloud copy. */
+@Composable
+private fun ViewpointThumb(viewpoint: Viewpoint, accountToken: String) {
+    val context = LocalContext.current
+    val photoId = viewpoint.photoId
+    val model: Any? = remember(photoId, accountToken) {
+        val local = photoId?.let { ViewpointPhotos.file(context, it) }
+        when {
+            photoId == null -> null
+            local != null && local.exists() -> local
+            accountToken.isNotBlank() -> ImageRequest.Builder(context)
+                .data("${BuildConfig.API_BASE_URL}/api/viewpoint-photos/$photoId")
+                .addHeader("Authorization", "Bearer $accountToken")
+                .build()
+            else -> null
+        }
+    }
+    if (model != null) {
+        AsyncImage(
+            model = model,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(26.dp).clip(CircleShape),
+        )
+    } else {
+        LucideIcon(R.drawable.ic_camera, null, tint = TextSecondary, size = 13.dp)
+    }
+}
+
 @Composable
 fun ForecastTimeline(snapshots: List<ForecastSnapshot>, mode: String, timeZone: String) {
     if (snapshots.isEmpty()) return
-    val max = snapshots.maxOf { it.probability }.coerceAtLeast(1.0)
-    val min = snapshots.minOf { it.probability }.coerceAtLeast(0.0)
+    val high = snapshots.maxOf { it.probability }.coerceAtLeast(1.0)
+    val low = snapshots.minOf { it.probability }.coerceAtLeast(0.0)
+    val pitch = 72.dp
+    // Open on the newest samples: the oldest ones are the least interesting.
+    val scroll = rememberScrollState()
+    LaunchedEffect(snapshots.size, mode) {
+        snapshotFlow { scroll.maxValue }.first { it > 0 }
+        scroll.scrollTo(scroll.maxValue)
+    }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LucideIcon(R.drawable.ic_clock_3, null, tint = TextSecondary, size = 16.dp)
@@ -854,44 +994,62 @@ fun ForecastTimeline(snapshots: List<ForecastSnapshot>, mode: String, timeZone: 
             )
         }
         Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            snapshots.forEach { snapshot ->
-                val size = 20.0 + ((snapshot.probability - min) / max(1.0, max - min)) * 80.0
-                Column(
-                    modifier = Modifier.widthIn(min = 52.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
-                        modifier = Modifier.height(46.dp),
-                        contentAlignment = Alignment.BottomCenter,
+        Column(modifier = Modifier.horizontalScroll(scroll)) {
+            Canvas(
+                Modifier
+                    .width(pitch * snapshots.size)
+                    .height(64.dp),
+            ) {
+                val padY = 8.dp.toPx()
+                val plotHeight = size.height - padY * 2
+                val points = snapshots.mapIndexed { index, snapshot ->
+                    val level = if (high == low) 0.5f else ((snapshot.probability - low) / (high - low)).toFloat()
+                    Offset(pitch.toPx() * (index + 0.5f), padY + plotHeight * (1f - level))
+                }
+                val line = Path().apply {
+                    points.forEachIndexed { index, point ->
+                        if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                    }
+                }
+                if (points.size > 1) {
+                    val area = Path().apply {
+                        moveTo(points.first().x, size.height)
+                        points.forEach { lineTo(it.x, it.y) }
+                        lineTo(points.last().x, size.height)
+                        close()
+                    }
+                    drawPath(area, Brush.verticalGradient(listOf(Color(0x59FFB35C), Color(0x00FFB35C))))
+                }
+                drawPath(
+                    line,
+                    Color(0xFFFFC66A),
+                    style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+                points.forEach { point ->
+                    drawCircle(Color(0xFFED7048), radius = 5.dp.toPx(), center = point)
+                    drawCircle(Color(0xFFFFE08A), radius = 2.5.dp.toPx(), center = point)
+                }
+            }
+            Row {
+                snapshots.forEach { snapshot ->
+                    Column(
+                        modifier = Modifier.width(pitch),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Box(
-                            Modifier
-                                .width(18.dp)
-                                .height((46 * size / 100.0).dp)
-                                .clip(RoundedCornerShape(topStart = 9.dp, topEnd = 9.dp, bottomStart = 2.dp, bottomEnd = 2.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color(0xFFFFD76A), Color(0xFFED7048)),
-                                    ),
-                                ),
+                        Text(
+                            "${Math.round(snapshot.probability)}%",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.W700,
+                        )
+                        Text(
+                            java.time.format.DateTimeFormatter.ofPattern("M/d HH:mm").withZone(java.time.ZoneId.of(timeZone)).format(java.time.Instant.ofEpochMilli(snapshot.calculatedAt)),
+                            color = TextMuted,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            softWrap = false,
                         )
                     }
-                    Text(
-                        "${Math.round(snapshot.probability)}%",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.W700,
-                    )
-                    Text(
-                        java.time.format.DateTimeFormatter.ofPattern("M/d HH:mm").withZone(java.time.ZoneId.of(timeZone)).format(java.time.Instant.ofEpochMilli(snapshot.calculatedAt)),
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                    )
                 }
             }
         }
@@ -906,164 +1064,6 @@ fun ForecastTimeline(snapshots: List<ForecastSnapshot>, mode: String, timeZone: 
     }
 }
 
-@Composable
-fun FeedbackCard(
-    state: UiState,
-    outlook: Forecast,
-    onToggleReaction: (String) -> Unit,
-    onEditing: (Boolean) -> Unit,
-    onAlertLead: (Int) -> Unit,
-    onAllowExactAlarms: (() -> Unit)? = null,
-) {
-    val day = state.sunsetDay ?: "--"
-    val feedback = state.sunsetFeedback
-    val sentiment = feedback?.optString("sentiment")?.takeIf { it.isNotBlank() && it != "null" }
-    val hasFeedback = sentiment != null || (feedback?.has("accurate") == true && !feedback.isNull("accurate"))
-    val active = outlook.scores[state.activeMode]
-    GlassCard(shape = RoundedCornerShape(22.dp), contentPadding = PaddingValues(18.dp)) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.rate_tonights_sunset),
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    letterSpacing = 0.7.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(day, color = Color.White, fontFamily = DisplayFamily, fontSize = 13.sp, fontWeight = FontWeight.W700)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.predicted_sunset_chance), color = TextMuted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Text(
-                    "${Math.round(outlook.scores.sunset.probability)}%",
-                    color = Color.White,
-                    fontFamily = DisplayFamily,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.W700,
-                )
-            }
-            Spacer(Modifier.height(9.dp))
-            if (hasFeedback && !state.feedbackEditing) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    LucideIcon(R.drawable.ic_check, null, tint = Color(0xFFD8F7DF), size = 16.dp)
-                    Text("Feedback submitted", color = Color(0xFFD8F7DF), fontSize = 12.sp)
-                    Text(
-                        when (sentiment) {
-                            "like" -> "Liked"
-                            "dislike" -> "Disliked"
-                            else -> ""
-                        },
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    val updateInteraction = remember { MutableInteractionSource() }
-                    Box(
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .clickable(
-                                interactionSource = updateInteraction,
-                                indication = null,
-                                role = Role.Button,
-                                onClickLabel = "Update sunset feedback",
-                                onClick = { onEditing(true) },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(Color(0x1AFFFFFF))
-                                .indication(updateInteraction, ripple())
-                                .padding(horizontal = 11.dp, vertical = 7.dp),
-                        ) {
-                            Text("Update", color = TextSecondary, fontSize = 12.sp)
-                        }
-                    }
-                }
-            } else {
-                // 48dp tall for touch; the visible 44dp track is drawn inset.
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .drawBehind {
-                            val inset = 2.dp.toPx()
-                            val trackHeight = size.height - inset * 2
-                            drawRoundRect(
-                                color = Color(0x0FFFFFFF),
-                                topLeft = Offset(0f, inset),
-                                size = Size(size.width, trackHeight),
-                                cornerRadius = CornerRadius(trackHeight / 2),
-                            )
-                        }
-                        .padding(horizontal = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    ReactionButton(
-                        label = "Like",
-                        icon = R.drawable.ic_thumbs_up,
-                        selected = sentiment == "like",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onToggleReaction("like") },
-                    )
-                    ReactionButton(
-                        label = "Dislike",
-                        icon = R.drawable.ic_thumbs_down,
-                        selected = sentiment == "dislike",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onToggleReaction("dislike") },
-                    )
-                }
-            }
-            Spacer(Modifier.height(7.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text("Local alert lead time", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                SelectPill(
-                    value = state.alertLeadMinutes,
-                    options = listOf(30 to "30 minutes", 60 to "1 hour", 120 to "2 hours"),
-                    onSelect = onAlertLead,
-                )
-            }
-            if (onAllowExactAlarms != null) {
-                Spacer(Modifier.height(6.dp))
-                ExactAlarmNotice(onAllowExactAlarms)
-            }
-            Spacer(Modifier.height(14.dp))
-            Box(Modifier.fillMaxWidth().height(1.dp).background(SurfaceHairline))
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                LucideIcon(R.drawable.ic_triangle_alert, null, tint = TextSecondary, size = 18.dp)
-                Text(
-                    text = if (active.blockers.isNotEmpty()) {
-                        "Local constraints: ${active.blockers.joinToString("; ")}. Confidence is about ${Math.round(active.confidence)}%."
-                    } else {
-                        "Local advantages: ${active.boosts.joinToString("; ")}. Confidence is about ${Math.round(active.confidence)}%."
-                    },
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp,
-                )
-            }
-        }
-    }
-}
-
 /** Shown while alerts are on but Android has not granted "Alarms & reminders" access. */
 @Composable
 fun ExactAlarmNotice(onAllow: () -> Unit, modifier: Modifier = Modifier) {
@@ -1074,43 +1074,6 @@ fun ExactAlarmNotice(onAllow: () -> Unit, modifier: Modifier = Modifier) {
         onAction = onAllow,
         modifier = modifier,
     )
-}
-
-@Composable
-private fun ReactionButton(
-    label: String,
-    icon: Int,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Row(
-        modifier = modifier
-            .fillMaxHeight()
-            .selectable(
-                selected = selected,
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .padding(vertical = 5.dp)
-            .clip(CircleShape)
-            .background(if (selected) SurfaceInset else Color.Transparent)
-            .indication(interactionSource, ripple()),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            tint = if (selected) TextPrimary else TextSecondary,
-            modifier = Modifier.size(15.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(label, color = if (selected) TextPrimary else TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.W600)
-    }
 }
 
 @Composable

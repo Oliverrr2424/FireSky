@@ -1,5 +1,7 @@
 package com.firesky.app.ui.map
 
+import com.firesky.app.ui.icons.tapPulse
+import com.firesky.app.ui.icons.rememberIconPulse
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
@@ -474,10 +476,11 @@ private fun ChaseSpotBottomCard(
 
 @Composable
 private fun SpotAction(icon: Int, label: String, onClick: () -> Unit, modifier: Modifier, primary: Boolean = false) {
+    val pulse = rememberIconPulse()
     Row(modifier.heightIn(min = 44.dp).clip(CircleShape).background(if (primary) ChaseInk else ChaseInset)
-        .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 8.dp),
+        .tapPulse(pulse).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        LucideIcon(icon, null, tint = if (primary) Color.White else ChaseInk, size = 15.dp)
+        LucideIcon(icon, null, tint = if (primary) Color.White else ChaseInk, size = 15.dp, pulse = pulse)
         Spacer(Modifier.width(5.dp))
         Text(label, color = if (primary) Color.White else ChaseInk, fontSize = 11.sp,
             fontWeight = FontWeight.W600, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -14,18 +14,22 @@ import com.firesky.app.data.ApiClient
 import com.firesky.app.data.ApiException
 import com.firesky.app.data.ClockStyle
 import com.firesky.app.data.DEFAULT_PLACE
+import com.firesky.app.data.EventReaction
 import com.firesky.app.data.Forecast
 import com.firesky.app.data.ForecastRepository
 import com.firesky.app.data.ForecastSnapshot
 import com.firesky.app.data.GridKey
 import com.firesky.app.data.Place
+import com.firesky.app.data.ReactionSummary
 import com.firesky.app.data.ScoredPoint
 import com.firesky.app.data.Store
 import com.firesky.app.data.UnitPrefs
 import com.firesky.app.data.Viewpoint
+import com.firesky.app.data.ViewpointPhotos
 import com.firesky.app.data.forecastDayKey
 import com.firesky.app.data.formatRange
 import com.firesky.app.data.optNullableString
+import com.firesky.app.data.reactionFor
 import com.firesky.app.data.sunAzimuth
 import com.firesky.app.data.upcomingEvents
 import com.firesky.app.data.weatherDescription
@@ -34,6 +38,7 @@ import com.firesky.app.notifications.PushTokenManager
 import com.firesky.app.notifications.SkyAlerts
 import com.firesky.app.ui.map.HeatField
 import com.firesky.app.widget.TonightSkyWidget
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,12 +47,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Locale
 import kotlin.math.abs
+
+data class ShareContent(
+    val placeName: String,
+    val region: String,
+    val mode: String,
+    val probability: Int,
+    val windowRange: String?,
+    val dateLine: String,
+    val link: String,
+)
 
 data class SearchState(
     val query: String = "",
@@ -104,7 +122,8 @@ data class UiState(
     val forecastHistoryLabel: String = "",
     val feedbackStore: JSONObject = JSONObject(),
     val lastSyncedAt: Long? = null,
-    val feedbackEditing: Boolean = false,
+    /** Community reaction totals per forecast event, keyed like [reactionKey]. */
+    val reactionCounts: Map<String, ReactionSummary> = emptyMap(),
     val selectedSample: ScoredPoint? = null,
     val accountBusy: Boolean = false,
     /** When the forecast on screen was fetched or re-scored. */
@@ -129,12 +148,13 @@ data class UiState(
         val event = outlook[activeMode]
         return sunAzimuth(event, place.latitude, place.longitude)
     }
-    val sunsetFeedback: JSONObject? get() {
-        val outlook = data ?: return null
-        val key = forecastDayKey(outlook) ?: return null
-        return feedbackStore.optJSONObject(key)
+    /** The forecast event on screen (selected day and mode); reactions are kept per event. */
+    val reactionKey: String? get() {
+        val outlook = selectedOutlook ?: return null
+        return forecastDayKey(outlook)?.let { "$it:$activeMode" }
     }
-    val sunsetDay: String? get() = data?.let { forecastDayKey(it) }
+    val reaction: EventReaction get() = reactionKey?.let { reactionFor(feedbackStore, it) } ?: EventReaction()
+    val reactionSummary: ReactionSummary? get() = reactionKey?.let { reactionCounts[it] }
 }
 
 class FireSkyViewModel(application: Application) : AndroidViewModel(application) {
@@ -422,8 +442,10 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         val outlook = current.selectedOutlook
         val lats = DoubleArray(samples.size) { samples[it].latitude }
         val lons = DoubleArray(samples.size) { samples[it].longitude }
-        val interpolatedProb = HeatField.interpolate(latitude, longitude, lats, lons, DoubleArray(samples.size) { samples[it].probability })
-        val interpolatedQual = HeatField.interpolate(latitude, longitude, lats, lons, DoubleArray(samples.size) { samples[it].quality })
+        // Match the softness the Chase Map draws, so an inspected spot reads the colour under the pin.
+        val sigma = HeatField.CHASE_MAP_SIGMA
+        val interpolatedProb = HeatField.interpolate(latitude, longitude, lats, lons, DoubleArray(samples.size) { samples[it].probability }, sigma)
+        val interpolatedQual = HeatField.interpolate(latitude, longitude, lats, lons, DoubleArray(samples.size) { samples[it].quality }, sigma)
         val defaultWindow = outlook?.appearanceWindow?.get(mode)?.let {
             formatRange(it.start, it.end, outlook.timeZone)
         } ?: "--:--"
@@ -663,7 +685,13 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
                 val favorites = if (sync.locations.isNotEmpty()) sync.locations else _state.value.favorites
                 // Viewpoints saved before signing in join the cloud copy instead of vanishing.
                 val localOnly = _state.value.viewpoints.filter { local -> sync.viewpoints.none { it.id == local.id } }
-                val viewpoints = (sync.viewpoints + localOnly).take(30)
+                // A photo still waiting to upload isn't on the server copy yet; keep the local reference.
+                val localById = _state.value.viewpoints.associateBy { it.id }
+                val cloud = sync.viewpoints.map { remote ->
+                    val local = localById[remote.id]
+                    if (remote.photoId == null && local?.photoId != null) remote.copy(photoId = local.photoId, photoUploaded = local.photoUploaded) else remote
+                }
+                val viewpoints = (cloud + localOnly).take(30)
                 store.favorites = favorites
                 store.viewpoints = viewpoints
                 _state.update {
@@ -681,6 +709,11 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 if (localOnly.isNotEmpty() || (sync.locations.isEmpty() && favorites.isNotEmpty())) scheduleSyncPush()
+                // Reactions made while signed out go up now, and the counts reload with this account's own vote.
+                countsFetchedAt.clear()
+                syncPendingReactions()
+                refreshReactionCounts()
+                uploadPendingPhotos()
                 scheduleAlerts()
                 PushTokenManager.syncRegistration(getApplication(), store, api)
             } catch (error: kotlinx.coroutines.CancellationException) {
@@ -907,125 +940,257 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
 
     // ---- Viewpoints & feedback ------------------------------------------
 
-    fun saveViewpoint(name: String) {
+    fun saveViewpoint(name: String, photo: android.net.Uri? = null) {
         val place = _state.value.place
-        saveViewpointAt(name, place.latitude, place.longitude)
+        saveViewpointAt(name, place.latitude, place.longitude, photo)
     }
 
-    fun saveViewpointAt(name: String, latitude: Double, longitude: Double) {
+    fun saveViewpointAt(name: String, latitude: Double, longitude: Double, photo: android.net.Uri? = null) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
-        val viewpoint = Viewpoint(
-            id = java.util.UUID.randomUUID().toString(),
-            name = trimmed,
-            latitude = latitude,
-            longitude = longitude,
-            updatedAt = System.currentTimeMillis(),
-        )
-        val next = (listOf(viewpoint) + _state.value.viewpoints.filterNot {
-            abs(it.latitude - latitude) < 0.0001 && abs(it.longitude - longitude) < 0.0001
-        }).take(30)
+        viewModelScope.launch {
+            // Resizing happens off the main thread; the viewpoint still saves if the photo can't be used.
+            val processed = photo?.let { ViewpointPhotos.import(getApplication(), it) }
+            if (photo != null && processed == null) {
+                android.widget.Toast.makeText(getApplication(), "That photo couldn't be used. Saved without it.", android.widget.Toast.LENGTH_LONG).show()
+            }
+            val viewpoint = Viewpoint(
+                id = java.util.UUID.randomUUID().toString(),
+                name = trimmed,
+                latitude = latitude,
+                longitude = longitude,
+                updatedAt = System.currentTimeMillis(),
+                photoId = processed?.id,
+                photoUploaded = processed == null,
+            )
+            fun sameSpot(other: Viewpoint) = abs(other.latitude - latitude) < 0.0001 && abs(other.longitude - longitude) < 0.0001
+            val previous = _state.value.viewpoints
+            val next = (listOf(viewpoint) + previous.filterNot(::sameSpot)).take(30)
+            // The viewpoint saved here before is replaced, so its photo has no owner left.
+            previous.filter(::sameSpot).mapNotNull { it.photoId }.forEach { ViewpointPhotos.delete(getApplication(), it) }
+            store.viewpoints = next
+            _state.update { it.copy(viewpoints = next) }
+            scheduleSyncPush()
+            if (processed != null) uploadPendingPhotos()
+        }
+    }
+
+    private var photoUploadJob: Job? = null
+
+    /** Sends photos that only exist on this device. Safe to call often; it retries whatever is still pending. */
+    fun uploadPendingPhotos() {
+        val token = _state.value.accountToken
+        if (token.isBlank() || photoUploadJob?.isActive == true) return
+        photoUploadJob = viewModelScope.launch {
+            var uploadedAny = false
+            for (viewpoint in _state.value.viewpoints) {
+                val id = viewpoint.photoId ?: continue
+                if (viewpoint.photoUploaded) continue
+                val file = ViewpointPhotos.file(getApplication(), id)
+                if (!file.exists()) continue
+                try {
+                    val (bytes, size) = withContext(Dispatchers.IO) {
+                        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+                        file.readBytes() to (bounds.outWidth to bounds.outHeight)
+                    }
+                    api.uploadViewpointPhoto(token, id, bytes, size.first, size.second)
+                    markPhotoUploaded(id)
+                    uploadedAny = true
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // Stays pending; retried on resume and after sign-in.
+                }
+            }
+            // The cloud copy of the viewpoint only names its photo once the image is there.
+            if (uploadedAny) scheduleSyncPush()
+        }
+    }
+
+    private fun markPhotoUploaded(photoId: String) {
+        val next = _state.value.viewpoints.map { if (it.photoId == photoId) it.copy(photoUploaded = true) else it }
         store.viewpoints = next
         _state.update { it.copy(viewpoints = next) }
-        scheduleSyncPush()
     }
 
     fun openViewpoint(viewpoint: Viewpoint) {
         selectPlace(_state.value.place.copy(name = viewpoint.name, latitude = viewpoint.latitude, longitude = viewpoint.longitude))
     }
 
+    // ---- Reactions -----------------------------------------------------------
+    //
+    // Like and dislike apply instantly and are remembered on the device. The server copy is
+    // best effort: a reaction made offline, or before signing in, stays queued and is sent on
+    // the next resume or sign-in, so tapping never shows an error.
+
+    private val reactionLock = Mutex()
+    private val countsFetchedAt = mutableMapOf<String, Long>()
+
+    /** Tapping the active reaction withdraws it; tapping the other one switches. */
     fun toggleReaction(sentiment: String) {
         val current = _state.value
-        val day = current.sunsetDay ?: return
-        val data = current.data ?: return
-        val existing = current.feedbackStore.optJSONObject(day)
-        val currentSentiment = existing?.optNullableString("sentiment")
-        val next = if (currentSentiment == sentiment) null else sentiment
-        updateFeedback(
-            sentiment = next,
-            accurate = when (next) {
-                null -> null
-                "like" -> true
-                else -> false
-            },
-        )
-        if (next != null) _state.update { it.copy(feedbackEditing = false) }
+        val key = current.reactionKey ?: return
+        val next = if (current.reaction.sentiment == sentiment) null else sentiment
+        commitReaction(key, next, reason = null)
         api.telemetry("forecast_feedback", JSONObject().put("kind", "sentiment").put("value", next ?: "cleared"))
-        val token = current.accountToken
-        if (token.isNotBlank()) {
-            viewModelScope.launch {
-                runCatching {
-                    api.postFeedback(
+    }
+
+    /** The optional "what was off?" answer to a dislike; tapping it again clears it. */
+    fun setReactionReason(reason: String) {
+        val current = _state.value
+        val key = current.reactionKey ?: return
+        if (current.reaction.sentiment != "dislike") return
+        commitReaction(key, "dislike", if (current.reaction.reason == reason) null else reason)
+        api.telemetry("forecast_feedback", JSONObject().put("kind", "reason").put("value", reason))
+    }
+
+    private fun commitReaction(key: String, sentiment: String?, reason: String?) {
+        val current = _state.value
+        val outlook = current.selectedOutlook ?: return
+        val mode = current.activeMode
+        val entry = JSONObject()
+            .put("day", key.substringBefore(':'))
+            .put("mode", mode)
+            .put("place", "${current.place.name}${if (current.place.admin1.isNotBlank()) " · ${current.place.admin1}" else ""}")
+            .put("probability", Math.round(outlook.scores[mode].probability))
+            .put("eventAt", outlook[mode].toEpochMilli())
+            .put("latitude", current.place.latitude)
+            .put("longitude", current.place.longitude)
+            .put("sentiment", sentiment ?: JSONObject.NULL)
+            .put("reason", reason ?: JSONObject.NULL)
+            .put("synced", false)
+            .put("updatedAt", System.currentTimeMillis())
+        val nextStore = JSONObject(current.feedbackStore.toString()).put(key, entry)
+        store.feedback = nextStore
+        _state.update { it.copy(feedbackStore = nextStore) }
+        pushReaction(key)
+    }
+
+    private fun pushReaction(key: String) {
+        val token = _state.value.accountToken
+        if (token.isBlank()) return
+        viewModelScope.launch {
+            reactionLock.withLock {
+                // Read inside the lock so a quick second tap sends the latest choice, not a stale one.
+                val entry = _state.value.feedbackStore.optJSONObject(key) ?: return@withLock
+                if (entry.optBoolean("synced", true) || !entry.has("eventAt")) return@withLock
+                val stamp = entry.optLong("updatedAt")
+                try {
+                    val summary = api.postFeedback(
                         token = token,
-                        eventAt = data.sunset.toEpochMilli(),
-                        mode = "sunset",
-                        placeName = "${current.place.name}${if (current.place.admin1.isNotBlank()) " · ${current.place.admin1}" else ""}",
-                        latitude = current.place.latitude,
-                        longitude = current.place.longitude,
-                        probability = data.scores.sunset.probability,
-                        outcome = when (next) {
-                            null -> "unknown"
-                            "like" -> "yes"
-                            else -> "no"
-                        },
-                        sentiment = next,
+                        eventAt = entry.getLong("eventAt"),
+                        mode = entry.optString("mode", "sunset"),
+                        placeName = entry.optString("place"),
+                        latitude = entry.getDouble("latitude"),
+                        longitude = entry.getDouble("longitude"),
+                        probability = entry.optDouble("probability"),
+                        sentiment = entry.optNullableString("sentiment"),
+                        reason = entry.optNullableString("reason"),
                     )
-                }.onFailure { error ->
-                    _state.update { it.copy(accountError = error.message ?: "Feedback sync failed") }
+                    markReactionSynced(key, stamp, summary)
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // Stays queued; syncPendingReactions retries on resume and after sign-in.
                 }
             }
         }
     }
 
-    private fun updateFeedback(sentiment: String?, accurate: Boolean?) {
+    private fun markReactionSynced(key: String, stamp: Long, summary: ReactionSummary) {
         val current = _state.value
-        val day = current.sunsetDay ?: return
-        val data = current.data ?: return
-        val existing = current.feedbackStore.optJSONObject(day) ?: JSONObject()
-        val nextEntry = JSONObject(existing.toString())
-            .put("day", day)
-            .put("place", "${current.place.name}${if (current.place.admin1.isNotBlank()) " · ${current.place.admin1}" else ""}")
-            .put("probability", Math.round(data.scores.sunset.probability))
-            .put("updatedAt", System.currentTimeMillis())
-        if (sentiment == null) nextEntry.put("sentiment", JSONObject.NULL) else nextEntry.put("sentiment", sentiment)
-        if (accurate == null) nextEntry.put("accurate", JSONObject.NULL) else nextEntry.put("accurate", accurate)
-        val nextStore = JSONObject(current.feedbackStore.toString()).put(day, nextEntry)
-        store.feedback = nextStore
-        _state.update { it.copy(feedbackStore = nextStore) }
-    }
-
-    fun setFeedbackEditing(editing: Boolean) {
-        _state.update { it.copy(feedbackEditing = editing) }
-    }
-
-    fun noteFeedbackForForecast() {
-        val current = _state.value
-        val data = current.data ?: return
-        val day = forecastDayKey(data) ?: return
-        val existing = current.feedbackStore.optJSONObject(day) ?: JSONObject()
-        val nextEntry = JSONObject(existing.toString())
-            .put("probability", Math.round(data.scores.sunset.probability))
-            .put("day", day)
-            .put("place", "${current.place.name}${if (current.place.admin1.isNotBlank()) " · ${current.place.admin1}" else ""}")
-            .put("updatedAt", System.currentTimeMillis())
-        val nextStore = JSONObject(current.feedbackStore.toString()).put(day, nextEntry)
-        store.feedback = nextStore
-        _state.update { it.copy(feedbackStore = nextStore) }
-    }
-
-    fun shareText(): String {
-        val current = _state.value
-        val outlook = current.selectedOutlook ?: return ""
-        val score = Math.round(outlook.scores[current.activeMode].probability)
-        val window = outlook.appearanceWindow[current.activeMode]
-        val title = "${current.place.name}${if (current.place.admin1.isNotBlank()) " · ${current.place.admin1}" else ""}"
-        val modeLabel = if (current.activeMode == "sunset") "Sunset" else "Sunrise"
-        val windowText = if (window.start != null && window.end != null) {
-            " · Best window ${formatRange(window.start, window.end, outlook.timeZone)}"
+        val entry = current.feedbackStore.optJSONObject(key)
+        // A newer tap since this push began keeps its own pending state.
+        val nextStore = if (entry != null && entry.optLong("updatedAt") == stamp) {
+            JSONObject(current.feedbackStore.toString()).put(key, JSONObject(entry.toString()).put("synced", true))
         } else {
-            ""
+            current.feedbackStore
         }
-        return "$title: $modeLabel chance is $score%$windowText."
+        store.feedback = nextStore
+        _state.update { it.copy(feedbackStore = nextStore, reactionCounts = it.reactionCounts + (key to summary)) }
+    }
+
+    fun syncPendingReactions() {
+        val reactions = _state.value.feedbackStore
+        reactions.keys().forEach { key ->
+            val entry = reactions.optJSONObject(key) ?: return@forEach
+            if (!entry.optBoolean("synced", true)) pushReaction(key)
+        }
+    }
+
+    /** Loads the community totals (and this account's own reaction) for the event on screen. */
+    fun refreshReactionCounts() {
+        val current = _state.value
+        val key = current.reactionKey ?: return
+        val outlook = current.selectedOutlook ?: return
+        val now = System.currentTimeMillis()
+        if (current.reactionCounts.containsKey(key) && now - (countsFetchedAt[key] ?: 0L) < REACTION_COUNTS_TTL_MS) return
+        countsFetchedAt[key] = now
+        val mode = current.activeMode
+        val place = current.place
+        val token = current.accountToken
+        viewModelScope.launch {
+            try {
+                val summary = api.fetchReactions(token, outlook[mode].toEpochMilli(), mode, place.latitude, place.longitude)
+                _state.update { it.copy(reactionCounts = it.reactionCounts + (key to summary)) }
+                adoptServerReaction(key, mode, summary)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                countsFetchedAt.remove(key)
+            }
+        }
+    }
+
+    /** A reaction made on another device (or before a reinstall) shows up here once signed in. */
+    private fun adoptServerReaction(key: String, mode: String, summary: ReactionSummary) {
+        val current = _state.value
+        val sentiment = summary.mineSentiment ?: return
+        if (current.feedbackStore.has(key)) return
+        val entry = JSONObject()
+            .put("day", key.substringBefore(':'))
+            .put("mode", mode)
+            .put("sentiment", sentiment)
+            .put("reason", summary.mineReason ?: JSONObject.NULL)
+            .put("synced", true)
+            .put("updatedAt", System.currentTimeMillis())
+        val nextStore = JSONObject(current.feedbackStore.toString()).put(key, entry)
+        store.feedback = nextStore
+        _state.update { it.copy(feedbackStore = nextStore) }
+    }
+
+    /** What the share sheet needs for the forecast on screen: the facts, and a link that opens the same place and event. */
+    fun shareContent(): ShareContent? {
+        val current = _state.value
+        val outlook = current.selectedOutlook ?: return null
+        val mode = current.activeMode
+        val window = outlook.appearanceWindow[mode]
+        val windowRange = if (window.start != null && window.end != null) formatRange(window.start, window.end, outlook.timeZone) else null
+        val dateLine = runCatching {
+            java.time.format.DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault())
+                .withZone(java.time.ZoneId.of(outlook.timeZone))
+                .format(outlook[mode])
+        }.getOrDefault("")
+        val link = android.net.Uri.parse(BuildConfig.API_BASE_URL).buildUpon()
+            .appendQueryParameter("lat", String.format(Locale.US, "%.4f", current.place.latitude))
+            .appendQueryParameter("lon", String.format(Locale.US, "%.4f", current.place.longitude))
+            .appendQueryParameter("name", current.place.name)
+            .apply { if (current.place.admin1.isNotBlank()) appendQueryParameter("region", current.place.admin1) }
+            .appendQueryParameter("mode", mode)
+            .appendQueryParameter("utm_source", "android_share")
+            .build()
+            .toString()
+        api.telemetry("forecast_shared", JSONObject().put("mode", mode).put("score", Math.round(outlook.scores[mode].probability)))
+        return ShareContent(
+            placeName = current.place.name,
+            region = current.place.admin1,
+            mode = mode,
+            probability = Math.round(outlook.scores[mode].probability).toInt(),
+            windowRange = windowRange,
+            dateLine = dateLine,
+            link = link,
+        )
     }
 
     fun selectMapSample(sample: ScoredPoint?) {
@@ -1037,6 +1202,8 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
         if (_state.value.offline != !isOnline()) {
             _state.update { it.copy(offline = !isOnline()) }
         }
+        syncPendingReactions()
+        uploadPendingPhotos()
         val current = _state.value
         val updatedAt = current.forecastUpdatedAt
         if (!current.loading && updatedAt != null && System.currentTimeMillis() - updatedAt > STALE_ON_RESUME_MS) {
@@ -1085,6 +1252,7 @@ class FireSkyViewModel(application: Application) : AndroidViewModel(application)
     private companion object {
         const val REFRESH_INTERVAL_MS = 90L * 60L * 1000L
         const val STALE_ON_RESUME_MS = 30L * 60L * 1000L
+        const val REACTION_COUNTS_TTL_MS = 60L * 1000L
 
         fun randomUrlSafe(bytes: Int): String {
             val buffer = ByteArray(bytes).also { SecureRandom().nextBytes(it) }

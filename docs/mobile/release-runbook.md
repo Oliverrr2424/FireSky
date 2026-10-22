@@ -1,12 +1,12 @@
 # FireSky Mobile Release Runbook
 
 ## 1) Preflight
-1. `npm install`
-2. `npm run mobile:preflight`
-3. Confirm no blocking errors in build output.
+1. The Android app is Kotlin/Compose. Build it directly with Gradle; Capacitor sync/preflight is only for the legacy wrapper and must not regenerate this native project.
+2. Set `JAVA_HOME` to a supported JDK and `ANDROID_HOME` to the installed Android SDK.
+3. In `android/`, run `./gradlew :app:testReleaseUnitTest :app:lintRelease` (Windows: `gradlew.bat`).
 
 ## 2) Android Build
-1. On Windows, use `npm install`, `npm run build`, `npx cap sync android`, and `npx cap doctor android`. The all-platform preflight also checks Xcode, which is unavailable on Windows.
+1. Use the native Gradle preflight above. A web build and Capacitor sync are not required for this app.
 2. Check the highest uploaded version code in Play Console, then increase `versionCode` in `android/app/build.gradle` and update `versionName`. A version code cannot be reused after upload.
 3. Keep the existing upload key and ignored `android/keystore.properties`. Never commit signing credentials.
 4. Run `npm run mobile:android:bundle`. The launcher selects `gradlew.bat` on Windows and `./gradlew` on macOS/Linux.

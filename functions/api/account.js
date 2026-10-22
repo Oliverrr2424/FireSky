@@ -42,6 +42,7 @@ export async function onRequestDelete({ request, env }) {
   const auth = await requireUser(request, env);
   if (auth.error) return accountError(request, auth.error, auth.status);
   await auth.db.batch([
+    auth.db.prepare('DELETE FROM viewpoint_photos WHERE user_id = ?').bind(auth.user.id),
     auth.db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(auth.user.id),
     auth.db.prepare('DELETE FROM users WHERE id = ?').bind(auth.user.id)
   ]);

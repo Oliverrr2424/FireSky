@@ -1,5 +1,7 @@
 package com.firesky.app.ui.map
 
+import com.firesky.app.ui.icons.tapPulse
+import com.firesky.app.ui.icons.rememberIconPulse
 import android.graphics.PointF
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -122,6 +124,8 @@ fun HeatMapCard(
     modifier: Modifier = Modifier,
     onSampleSelected: (ScoredPoint?) -> Unit = {},
     onOpenFullMap: (() -> Unit)? = null,
+    /** Fixed map height; the home screen sizes the maps so the score gauge fits on the first screen. */
+    mapHeight: androidx.compose.ui.unit.Dp? = null,
 ) {
     GlassCard(
         modifier = modifier,
@@ -144,16 +148,18 @@ fun HeatMapCard(
                 letterSpacing = (if (compact) 0.8 else 1.4).sp,
             )
             if (onOpenFullMap != null) {
+                val pillPulse = rememberIconPulse()
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
                         .background(com.firesky.app.ui.theme.SurfaceControl)
+                        .tapPulse(pillPulse)
                         .clickable(onClick = onOpenFullMap)
                         .padding(horizontal = 9.dp, vertical = 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    LucideIcon(com.firesky.app.R.drawable.ic_compass, null, tint = TextSecondary, size = 11.dp)
+                    LucideIcon(com.firesky.app.R.drawable.ic_compass, null, tint = TextSecondary, size = 11.dp, pulse = pillPulse)
                     Text(
                         text = androidx.compose.ui.res.stringResource(com.firesky.app.R.string.nav_chase_map),
                         color = TextSecondary,
@@ -187,7 +193,10 @@ fun HeatMapCard(
             compact = compact,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(if (compact) 16f / 10f else 16f / 9f)
+                .then(
+                    if (mapHeight != null) Modifier.height(mapHeight)
+                    else Modifier.aspectRatio(if (compact) 16f / 10f else 16f / 9f),
+                )
                 .clip(RoundedCornerShape(if (compact) 16.dp else 21.dp)),
             onSampleSelected = onSampleSelected,
         )

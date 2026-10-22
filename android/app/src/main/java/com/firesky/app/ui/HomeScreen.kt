@@ -3,6 +3,7 @@ package com.firesky.app.ui
 import android.Manifest
 import android.app.Activity
 import android.app.AlarmManager
+import android.content.ClipData
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -15,6 +16,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.indication
@@ -77,6 +88,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -90,6 +102,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -99,10 +112,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
+import com.firesky.app.BuildConfig
 import com.firesky.app.FireSkyViewModel
 import com.firesky.app.R
 import com.firesky.app.UiState
 import com.firesky.app.data.Place
+import com.firesky.app.ui.community.CommunityScreen
+import com.firesky.app.ui.icons.rememberIconPulse
+import com.firesky.app.ui.icons.tapPulse
 import com.firesky.app.ui.map.ChaseMapScreen
 import com.firesky.app.ui.map.HeatMapCard
 import com.firesky.app.ui.theme.DisplayFamily
@@ -114,7 +131,9 @@ import com.firesky.app.ui.theme.TextMuted
 import com.firesky.app.ui.theme.TextPrimary
 import com.firesky.app.ui.theme.TextSecondary
 import com.firesky.app.ui.theme.UiFamily
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun FireSkyApp(viewModel: FireSkyViewModel) {
@@ -131,6 +150,7 @@ private fun FireSkyAppContent(
     state: UiState,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val navController = rememberNavController()
@@ -141,7 +161,8 @@ private fun FireSkyAppContent(
         window?.let {
             androidx.core.view.WindowCompat.getInsetsController(it, it.decorView).apply {
                 isAppearanceLightStatusBars = state.onboardingCompleted && currentRoute == "map"
-                isAppearanceLightNavigationBars = state.onboardingCompleted
+                // The bottom bar now sits on the dark weather backdrop, so the gesture pill stays light.
+                isAppearanceLightNavigationBars = false
             }
         }
         onDispose { }
@@ -307,14 +328,51 @@ private fun FireSkyAppContent(
         }
     }
 
+    // Shares a picture of the forecast plus a link that opens the same place, so the people it
+    // reaches can use FireSky straight away. If the picture can't be made, the text and link still go.
     fun share() {
-        val text = viewModel.shareText()
-        if (text.isBlank()) return
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, text)
+        val content = viewModel.shareContent() ?: return
+        scope.launch {
+            val eventLabel = resources.getString(
+                if (content.mode == "sunrise") R.string.feedback_event_sunrise else R.string.feedback_event_sunset,
+            )
+            val title = content.placeName + content.region.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+            val windowLine = content.windowRange?.let { resources.getString(R.string.share_best_window, it) }
+            val text = buildString {
+                append(resources.getString(R.string.share_summary, title, eventLabel, content.probability))
+                if (windowLine != null) append(" · ").append(windowLine)
+                append("\n\n").append(resources.getString(R.string.share_cta)).append('\n').append(content.link)
+            }
+            val send = Intent(Intent.ACTION_SEND).apply {
+                putExtra(Intent.EXTRA_SUBJECT, title)
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            try {
+                val spec = ShareCardSpec(
+                    mode = content.mode,
+                    probability = content.probability,
+                    scoreLabel = resources.getString(scoreLabelRes(content.probability.toDouble())),
+                    eventLabel = eventLabel,
+                    placeName = content.placeName,
+                    region = content.region,
+                    dateLine = content.dateLine,
+                    windowLine = windowLine,
+                    tagline = resources.getString(R.string.share_tagline),
+                    linkText = BuildConfig.API_BASE_URL.removePrefix("https://").trimEnd('/'),
+                )
+                val file = withContext(Dispatchers.Default) { ShareCard.write(context, ShareCard.render(context, spec)) }
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                send.type = "image/png"
+                send.putExtra(Intent.EXTRA_STREAM, uri)
+                send.clipData = ClipData.newRawUri("", uri)
+                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                send.type = "text/plain"
+            }
+            context.startActivity(Intent.createChooser(send, resources.getString(R.string.share_chooser_title)))
         }
-        context.startActivity(Intent.createChooser(intent, "FireSky forecast"))
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -365,7 +423,6 @@ private fun FireSkyAppContent(
                                 state = state,
                                 locationBusy = locationBusy,
                                 notificationsActive = notificationsActive,
-                                onAllowExactAlarms = onAllowExactAlarms,
                                 onToggleSearch = { viewModel.setSearchVisible(!state.showSearch) },
                                 onSelectPlace = { viewModel.selectPlace(it) },
                                 onSelectMode = { viewModel.selectMode(it) },
@@ -378,11 +435,11 @@ private fun FireSkyAppContent(
                                 onSearchSubmit = { viewModel.submitSearch() },
                                 onSelectDay = { viewModel.selectDay(it) },
                                 onSampleSelected = { viewModel.selectMapSample(it) },
-                                onSaveViewpoint = { name -> viewModel.saveViewpoint(name) },
+                                onSaveViewpoint = { name, photo -> viewModel.saveViewpoint(name, photo) },
                                 onOpenViewpoint = { viewModel.openViewpoint(it) },
                                 onToggleReaction = { viewModel.toggleReaction(it) },
-                                onFeedbackEditing = { viewModel.setFeedbackEditing(it) },
-                                onAlertLead = { viewModel.setAlertLeadMinutes(it) },
+                                onReactionReason = { viewModel.setReactionReason(it) },
+                                onRefreshReactionCounts = { viewModel.refreshReactionCounts() },
                                 onOpenFullMap = { navigateToTab("map") },
                             )
                         }
@@ -400,6 +457,9 @@ private fun FireSkyAppContent(
                                     showMessage("Saved chase viewpoint: $name")
                                 },
                             )
+                        }
+                        composable("community") {
+                            CommunityScreen()
                         }
                         composable("account") {
                             AccountPage(
@@ -485,10 +545,9 @@ private fun FireSkyBottomNavBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
             .drawBehind {
                 drawLine(
-                    color = Color(0xFFE9EBEE),
+                    color = SurfaceHairline,
                     start = Offset(0f, 0f),
                     end = Offset(size.width, 0f),
                     strokeWidth = 1f,
@@ -501,7 +560,7 @@ private fun FireSkyBottomNavBar(
             modifier = Modifier
                 .widthIn(max = 520.dp)
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 8.dp)
+                .padding(horizontal = 12.dp, vertical = 6.5.dp)
                 .selectableGroup(),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
@@ -521,6 +580,14 @@ private fun FireSkyBottomNavBar(
                 selected = currentRoute == "map",
                 modifier = Modifier.weight(1f),
                 onClick = { onSelectRoute("map") },
+            )
+            BottomNavItem(
+                route = "community",
+                label = stringResource(R.string.nav_community),
+                iconRes = R.drawable.ic_users,
+                selected = currentRoute == "community",
+                modifier = Modifier.weight(1f),
+                onClick = { onSelectRoute("community") },
             )
             BottomNavItem(
                 route = "account",
@@ -546,26 +613,28 @@ private fun BottomNavItem(
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val pulse = rememberIconPulse()
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
+            .tapPulse(pulse)
             .selectable(
                 selected = selected,
                 interactionSource = interactionSource,
-                indication = ripple(),
+                indication = ripple(color = Color.White),
                 role = Role.Tab,
                 onClick = onClick,
             )
-            .padding(vertical = 4.dp),
+            .padding(vertical = 3.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         Box(
             modifier = Modifier
-                .height(28.dp)
-                .width(52.dp)
+                .height(24.dp)
+                .width(48.dp)
                 .clip(CircleShape)
-                .background(if (selected) Color(0xFFF0F1F3) else Color.Transparent),
+                .background(if (selected) Color(0x4DFFFFFF) else Color.Transparent),
             contentAlignment = Alignment.Center,
         ) {
             if (route == "account" && avatarUrl != null) {
@@ -576,19 +645,21 @@ private fun BottomNavItem(
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                 )
             } else {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = label,
-                    tint = if (selected) Color(0xFF20262D) else Color(0xFF777D85),
-                    modifier = Modifier.size(18.dp),
+                LucideIcon(
+                    iconRes,
+                    label,
+                    tint = if (selected) Color.White else TextSecondary,
+                    size = 17.dp,
+                    pulse = pulse,
+                    playKey = selected,
                 )
             }
         }
         Text(
             text = label,
-            color = if (selected) Color(0xFF20262D) else Color(0xFF777D85),
+            color = if (selected) Color.White else TextSecondary,
             fontFamily = UiFamily,
-            fontSize = 11.sp,
+            fontSize = 10.5.sp,
             fontWeight = if (selected) FontWeight.W700 else FontWeight.W500,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -630,12 +701,14 @@ private fun notificationSettingsIntent(context: Context): Intent =
         appDetailsSettingsIntent(context)
     }
 
+/** Height of everything on the first screen besides the two map bodies (header, card chrome, hero card). */
+private val HOME_FIXED_CHROME = 404.dp
+
 @Composable
 private fun HomeContent(
     state: UiState,
     locationBusy: Boolean,
     notificationsActive: Boolean,
-    onAllowExactAlarms: (() -> Unit)?,
     onToggleSearch: () -> Unit,
     onSelectPlace: (Place) -> Unit,
     onSelectMode: (String) -> Unit,
@@ -648,17 +721,19 @@ private fun HomeContent(
     onSearchSubmit: () -> Unit,
     onSelectDay: (Int) -> Unit,
     onSampleSelected: (com.firesky.app.data.ScoredPoint?) -> Unit,
-    onSaveViewpoint: (String) -> Unit,
+    onSaveViewpoint: (String, Uri?) -> Unit,
     onOpenViewpoint: (com.firesky.app.data.Viewpoint) -> Unit,
     onToggleReaction: (String) -> Unit,
-    onFeedbackEditing: (Boolean) -> Unit,
-    onAlertLead: (Int) -> Unit,
+    onReactionReason: (String) -> Unit,
+    onRefreshReactionCounts: () -> Unit,
     onOpenFullMap: () -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxWidth < 720.dp
         val wide = maxWidth >= 1180.dp
         val horizontalPadding = if (compact) 14.dp else 28.dp
+        val screenWidth = maxWidth
+        val screenHeight = maxHeight
 
         Column(
             modifier = Modifier
@@ -714,6 +789,10 @@ private fun HomeContent(
                 val appearance = outlook.appearanceWindow[state.activeMode]
 
                 if (compact) {
+                    // Share the screen height between the two maps so the score gauge below
+                    // them is fully visible when the app opens; tall phones keep 16:10 maps.
+                    val aspectHeight = (screenWidth - horizontalPadding * 2 - 20.dp) * 10f / 16f
+                    val mapHeight = ((screenHeight - HOME_FIXED_CHROME) / 2f).coerceIn(120.dp, maxOf(120.dp, aspectHeight))
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         HeatMapCard(
                             place = state.place,
@@ -723,6 +802,7 @@ private fun HomeContent(
                             compact = compact,
                             onSampleSelected = onSampleSelected,
                             onOpenFullMap = onOpenFullMap,
+                            mapHeight = mapHeight,
                         )
                         HeatMapCard(
                             place = state.place,
@@ -732,6 +812,7 @@ private fun HomeContent(
                             compact = compact,
                             onSampleSelected = onSampleSelected,
                             onOpenFullMap = onOpenFullMap,
+                            mapHeight = mapHeight,
                         )
                     }
                 } else {
@@ -805,9 +886,8 @@ private fun HomeContent(
                         state = state,
                         outlook = outlook,
                         onToggleReaction = onToggleReaction,
-                        onEditing = onFeedbackEditing,
-                        onAlertLead = onAlertLead,
-                        onAllowExactAlarms = onAllowExactAlarms,
+                        onReason = onReactionReason,
+                        onRefreshCounts = onRefreshReactionCounts,
                     )
                 }
 
@@ -843,13 +923,17 @@ private fun LocationHeaderAndControls(
     onSearchSubmit: () -> Unit,
 ) {
     val isFavorite = state.favorites.any { it.sameSpot(state.place) }
+    val headerPulse = rememberIconPulse()
     Column(Modifier.fillMaxWidth()) {
         // 1. Place Title Row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
+                .tapPulse(headerPulse)
                 .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
                     onClickLabel = if (state.showSearch) "Close search" else "Search locations",
                     onClick = onToggleSearch,
                 )
@@ -891,34 +975,55 @@ private fun LocationHeaderAndControls(
                     .background(SurfaceControl),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    painter = painterResource(if (state.showSearch) R.drawable.ic_chevron_down else R.drawable.ic_search),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp),
-                )
+                Crossfade(targetState = state.showSearch, animationSpec = tween(220), label = "searchToggleIcon") { open ->
+                    LucideIcon(
+                        if (open) R.drawable.ic_chevron_down else R.drawable.ic_search,
+                        null,
+                        tint = Color.White,
+                        size = 16.dp,
+                        pulse = headerPulse,
+                        playOnAppear = true,
+                    )
+                }
             }
         }
 
         // 2. Immediately below the Place Title: Search Panel (when open) OR Saved Places row (when closed)
-        if (state.showSearch) {
-            Spacer(Modifier.height(8.dp))
-            SearchPanel(
-                state = state,
-                onQuery = onSearchQuery,
-                onSubmit = onSearchSubmit,
-                onSelect = onSelectPlace,
-            )
-            Spacer(Modifier.height(8.dp))
-        } else if (state.favorites.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            SavedPlacesBar(
-                favorites = state.favorites,
-                place = state.place,
-                compact = compact,
-                onSelect = onSelectPlace,
-            )
-            Spacer(Modifier.height(4.dp))
+        AnimatedVisibility(
+            visible = state.showSearch,
+            enter = fadeIn(tween(200, delayMillis = 60)) +
+                expandVertically(tween(300, easing = FastOutSlowInEasing), expandFrom = Alignment.Top) +
+                slideInVertically(tween(300, easing = FastOutSlowInEasing)) { -it / 5 },
+            exit = fadeOut(tween(120)) +
+                shrinkVertically(tween(240, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) +
+                slideOutVertically(tween(240, easing = FastOutSlowInEasing)) { -it / 5 },
+        ) {
+            Column {
+                Spacer(Modifier.height(8.dp))
+                SearchPanel(
+                    state = state,
+                    onQuery = onSearchQuery,
+                    onSubmit = onSearchSubmit,
+                    onSelect = onSelectPlace,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+        AnimatedVisibility(
+            visible = !state.showSearch && state.favorites.isNotEmpty(),
+            enter = fadeIn(tween(220, delayMillis = 120)) + expandVertically(tween(260), expandFrom = Alignment.Top),
+            exit = fadeOut(tween(100)) + shrinkVertically(tween(200), shrinkTowards = Alignment.Top),
+        ) {
+            Column {
+                Spacer(Modifier.height(6.dp))
+                SavedPlacesBar(
+                    favorites = state.favorites,
+                    place = state.place,
+                    compact = compact,
+                    onSelect = onSelectPlace,
+                )
+                Spacer(Modifier.height(4.dp))
+            }
         }
 
         // 3. Sunrise / Sunset Mode Toggle + Quick Actions
@@ -1016,7 +1121,7 @@ private fun QuickActions(
 ) {
     Row(modifier) {
         ControlIconButton(
-            painter = painterResource(R.drawable.ic_star),
+            iconRes = R.drawable.ic_star,
             contentDescription = "Saved location",
             onClick = onFavorite,
             selected = favorite,
@@ -1024,19 +1129,19 @@ private fun QuickActions(
             size = 34.dp,
         )
         ControlIconButton(
-            painter = painterResource(if (locationBusy) R.drawable.ic_loader_circle else R.drawable.ic_locate_fixed),
+            iconRes = if (locationBusy) R.drawable.ic_loader_circle else R.drawable.ic_locate_fixed,
             contentDescription = if (locationBusy) "Finding your location" else "Use my location",
             onClick = onLocate,
             size = 34.dp,
         )
         ControlIconButton(
-            painter = painterResource(R.drawable.ic_refresh_cw),
+            iconRes = R.drawable.ic_refresh_cw,
             contentDescription = "Refresh",
             onClick = onRefresh,
             size = 34.dp,
         )
         ControlIconButton(
-            painter = painterResource(if (notifications) R.drawable.ic_bell else R.drawable.ic_bell_off),
+            iconRes = if (notifications) R.drawable.ic_bell else R.drawable.ic_bell_off,
             contentDescription = "Forecast alerts",
             onClick = onNotifications,
             selected = notifications,
@@ -1044,7 +1149,7 @@ private fun QuickActions(
             size = 34.dp,
         )
         ControlIconButton(
-            painter = painterResource(R.drawable.ic_share_2),
+            iconRes = R.drawable.ic_share_2,
             contentDescription = "Share forecast",
             onClick = onShare,
             size = 34.dp,
@@ -1092,15 +1197,15 @@ private fun SearchPanel(
 ) {
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        contentPadding = PaddingValues(12.dp),
+        shape = RoundedCornerShape(26.dp),
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
     ) {
         // 1. Search Input Bar at the top
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 44.dp)
-                .padding(start = 14.dp, end = 6.dp),
+                .heightIn(min = 42.dp)
+                .padding(start = 14.dp, end = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LucideIcon(R.drawable.ic_search, null, tint = TextSecondary, size = 16.dp)
@@ -1233,17 +1338,19 @@ private fun ErrorState(message: String, offline: Boolean, onRetry: () -> Unit) {
             )
             Spacer(Modifier.height(20.dp))
             val interactionSource = remember { MutableInteractionSource() }
+            val retryPulse = rememberIconPulse()
             Row(
                 modifier = Modifier
                     .heightIn(min = 48.dp)
                     .clip(CircleShape)
                     .background(Color(0x2EFFFFFF))
+                    .tapPulse(retryPulse)
                     .clickable(interactionSource = interactionSource, indication = ripple(), role = Role.Button, onClick = onRetry)
                     .padding(horizontal = 22.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                LucideIcon(R.drawable.ic_refresh_cw, null, tint = TextPrimary, size = 17.dp)
+                LucideIcon(R.drawable.ic_refresh_cw, null, tint = TextPrimary, size = 17.dp, pulse = retryPulse)
                 Text(stringResource(R.string.action_retry), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.W600)
             }
         }

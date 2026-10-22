@@ -218,7 +218,7 @@ private class WeatherField(private val theme: String, private val isNight: Boole
         val isFog = theme == "fog"
         return Cloud(
             x = rand(-220f, width),
-            y = if (isFog) rand(height * 0.24f, height * 0.95f) else rand(-height * 0.08f, height * 0.62f),
+            y = if (isFog) rand(height * 0.24f, height * 0.95f) else rand(-height * 0.08f, height * 0.92f),
             r = rand(if (isFog) 180f else 140f, if (isFog) 420f else 340f),
             speed = if (isFog) rand(2f, 6f) else rand(3f, 10f),
             alpha = if (isFog) rand(0.1f, 0.22f) else rand(0.08f, 0.2f),
@@ -228,7 +228,7 @@ private class WeatherField(private val theme: String, private val isNight: Boole
 
     private fun makeStar() = Star(
         x = rand(0f, width),
-        y = rand(0f, height * 0.85f),
+        y = rand(0f, height),
         r = rand(0.3f, 1.5f),
         baseAlpha = rand(0.35f, 0.95f),
         twinkle = rand(0f, (PI * 2).toFloat()),
@@ -326,7 +326,7 @@ private class WeatherField(private val theme: String, private val isNight: Boole
             c.x += c.speed * dt
             if (c.x - c.r > width) {
                 c.x = -c.r
-                c.y = if (isFog) rand(height * 0.35f, height * 0.95f) else rand(-40f, height * 0.65f)
+                c.y = if (isFog) rand(height * 0.35f, height * 0.95f) else rand(-40f, height * 0.92f)
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.firesky.app.ui
 
+import com.firesky.app.ui.icons.tapPulse
+import com.firesky.app.ui.icons.rememberIconPulse
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -218,15 +220,17 @@ private fun AccountTopBar(compact: Boolean, onClose: () -> Unit) {
                 .clickable(interactionSource = interactionSource, indication = null, role = Role.Button, onClick = onClose),
             contentAlignment = Alignment.Center,
         ) {
+            val backPulse = rememberIconPulse()
             Box(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
                     .background(SurfaceControl)
+                    .tapPulse(backPulse)
                     .indication(interactionSource, ripple()),
                 contentAlignment = Alignment.Center,
             ) {
-                LucideIcon(R.drawable.ic_chevron_left, "Back to forecast", tint = TextPrimary, size = 22.dp)
+                LucideIcon(R.drawable.ic_chevron_left, "Back to forecast", tint = TextPrimary, size = 22.dp, pulse = backPulse)
             }
         }
         Row(
@@ -1077,7 +1081,7 @@ private fun AccountField(
             )
             if (password) {
                 ControlIconButton(
-                    painter = androidx.compose.ui.res.painterResource(if (revealed) R.drawable.ic_eye_off else R.drawable.ic_eye),
+                    iconRes = if (revealed) R.drawable.ic_eye_off else R.drawable.ic_eye,
                     contentDescription = if (revealed) "Hide password" else "Show password",
                     onClick = { revealed = !revealed },
                     size = 34.dp,
@@ -1145,10 +1149,12 @@ private fun ToggleRow(
     modifier: Modifier = Modifier,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val rowPulse = rememberIconPulse()
     Row(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
+            .tapPulse(rowPulse)
             .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
             .semantics { stateDescription = if (checked) "On" else "Off" }
             .padding(vertical = 4.dp),
@@ -1156,7 +1162,7 @@ private fun ToggleRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (icon != null) {
-            LucideIcon(icon, null, tint = TextPrimary, size = 17.dp)
+            LucideIcon(icon, null, tint = TextPrimary, size = 17.dp, pulse = rowPulse)
         }
         Text(
             label,
@@ -1201,6 +1207,7 @@ private fun AccountPillButton(
     google: Boolean = false,
     enabled: Boolean = true,
 ) {
+    val pillPulse = rememberIconPulse()
     Row(
         modifier = modifier
             .heightIn(min = 48.dp)
@@ -1213,6 +1220,7 @@ private fun AccountPillButton(
                     else -> SurfaceInset
                 },
             )
+            .tapPulse(pillPulse)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1224,6 +1232,7 @@ private fun AccountPillButton(
                 null,
                 tint = if (destructive) ErrorText else TextPrimary,
                 size = 17.dp,
+                pulse = pillPulse,
             )
             Spacer(Modifier.width(8.dp))
         }

@@ -13,12 +13,13 @@ import kotlin.math.sin
 import kotlin.math.tan
 
 /**
- * Exact port of the web heat field: Gaussian RBF over the regional sample grid,
+ * Port of the web heat field: Gaussian RBF over the regional sample grid,
  * evaluated in screen space and coloured with the same six-stop ramp.
+ * The home cards use the web softness; the full Chase Map uses a tighter one.
  */
 object HeatField {
-    private const val RBF_SIGMA = 0.24
-    private const val RBF_SIG2_INV = 1.0 / (2.0 * RBF_SIGMA * RBF_SIGMA)
+    const val DEFAULT_SIGMA = 0.24
+    const val CHASE_MAP_SIGMA = 0.14
     private const val CUTOFF_SQUARED = 16.0
 
     private val STOP_VALUES = doubleArrayOf(1.0, 24.0, 44.0, 62.0, 82.0, 100.0)
@@ -63,16 +64,18 @@ object HeatField {
         latArray: DoubleArray,
         lonArray: DoubleArray,
         valueArray: DoubleArray,
+        sigma: Double = DEFAULT_SIGMA,
     ): Double {
         var weighted = 0.0
         var weights = 0.0
+        val sig2Inv = 1.0 / (2.0 * sigma * sigma)
         val latScale = cos(lat * PI / 180.0)
         for (index in latArray.indices) {
             val dx = (lon - lonArray[index]) * latScale
             val dy = lat - latArray[index]
             val d2 = dx * dx + dy * dy
             if (d2 > CUTOFF_SQUARED) continue
-            val weight = exp(-d2 * RBF_SIG2_INV)
+            val weight = exp(-d2 * sig2Inv)
             weighted += valueArray[index] * weight
             weights += weight
         }
@@ -87,6 +90,7 @@ object HeatField {
         viewport: Viewport,
         fast: Boolean,
         lowPower: Boolean,
+        sigma: Double = DEFAULT_SIGMA,
     ): Bitmap? {
         if (samples.isEmpty() || cssWidth <= 0f || cssHeight <= 0f) return null
         val lowPowerMultiplier = if (lowPower) 1.35 else 1.0
@@ -119,7 +123,7 @@ object HeatField {
             val rowStart = (height - 1 - y) * width
             for (x in 0 until width) {
                 val lon = viewport.west + lonSpan * (x / widthScale)
-                val value = interpolate(lat, lon, latArray, lonArray, valueArray)
+                val value = interpolate(lat, lon, latArray, lonArray, valueArray, sigma)
                 val color = colorStop(value)
                 val alpha = (0.3 + value / 190.0).coerceIn(0.3, 0.78)
                 // The web's custom layer is composited through a premultiplied

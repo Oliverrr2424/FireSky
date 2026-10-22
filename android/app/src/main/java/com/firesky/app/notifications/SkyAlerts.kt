@@ -601,21 +601,33 @@ class SkyAlertReceiver : BroadcastReceiver() {
             receiverScope.launch {
                 try {
                     val store = Store(context)
-                    if (dayKey.isNotBlank()) {
+                    val place = placeRaw?.let { runCatching { Place.fromJson(JSONObject(it)) }.getOrNull() } ?: store.lastPlace
+                    // Same event key and entry shape the app screen uses, so the card there shows this vote
+                    // and the app's own sync sends it if the request below can't.
+                    val key = if (dayKey.isNotBlank()) "$dayKey:$mode" else null
+                    val stamp = System.currentTimeMillis()
+                    if (key != null && place != null) {
                         val fb = store.feedback
                         fb.put(
-                            dayKey,
+                            key,
                             JSONObject()
+                                .put("day", dayKey)
+                                .put("mode", mode)
+                                .put("place", place.name)
+                                .put("probability", Math.round(probability))
+                                .put("eventAt", eventAt)
+                                .put("latitude", place.latitude)
+                                .put("longitude", place.longitude)
                                 .put("sentiment", sentiment)
-                                .put("accurate", sentiment == "like")
-                                .put("updatedAt", System.currentTimeMillis()),
+                                .put("reason", JSONObject.NULL)
+                                .put("synced", false)
+                                .put("updatedAt", stamp),
                         )
                         store.feedback = fb
                     }
                     val token = store.accountToken
-                    val place = placeRaw?.let { runCatching { Place.fromJson(JSONObject(it)) }.getOrNull() } ?: store.lastPlace
-                    if (token.isNotBlank() && place != null) {
-                        runCatching {
+                    if (key != null && token.isNotBlank() && place != null) {
+                        val sent = runCatching {
                             ApiClient(store).postFeedback(
                                 token = token,
                                 eventAt = eventAt,
@@ -624,9 +636,17 @@ class SkyAlertReceiver : BroadcastReceiver() {
                                 latitude = place.latitude,
                                 longitude = place.longitude,
                                 probability = probability,
-                                outcome = if (sentiment == "like") "yes" else "no",
                                 sentiment = sentiment,
+                                reason = null,
                             )
+                        }.isSuccess
+                        if (sent) {
+                            val fb = store.feedback
+                            val entry = fb.optJSONObject(key)
+                            if (entry != null && entry.optLong("updatedAt") == stamp) {
+                                fb.put(key, entry.put("synced", true))
+                                store.feedback = fb
+                            }
                         }
                     }
                 } finally {

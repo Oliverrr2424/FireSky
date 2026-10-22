@@ -110,9 +110,9 @@ fun ScoreRing(
         contentAlignment = Alignment.BottomCenter,
     ) {
         val ringWidth = maxWidth
-        val valueSize = (ringWidth.value * 0.165f).coerceIn(22f, 46f).sp
-        val percentSize = (ringWidth.value * 0.068f).coerceIn(10f, 18f).sp
-        val labelSize = (ringWidth.value * 0.062f).coerceIn(10.5f, 14.5f).sp
+        val valueSize = (ringWidth.value * 0.18f).coerceIn(24f, 50f).sp
+        val percentSize = (ringWidth.value * 0.074f).coerceIn(11f, 19f).sp
+        val labelSize = (ringWidth.value * 0.07f).coerceIn(11.5f, 16f).sp
 
         Canvas(Modifier.fillMaxSize()) {
             val scale = min(size.width / 320f, size.height / 206f)
@@ -122,8 +122,9 @@ fun ScoreRing(
 
             val cx = 160f
             val cy = 178f
-            val radius = 134f
-            val strokeWidth = 30f * scale
+            val radius = 132f
+            val strokeUnits = 38f
+            val strokeWidth = strokeUnits * scale
             val topLeft = point(cx - radius, cy - radius)
             val arcSize = Size(2f * radius * scale, 2f * radius * scale)
             val gradient = Brush.horizontalGradient(
@@ -155,7 +156,7 @@ fun ScoreRing(
                     useCenter = false,
                     topLeft = topLeft,
                     size = arcSize,
-                    style = Stroke(width = strokeWidth * 1.5f, cap = StrokeCap.Round),
+                    style = Stroke(width = strokeWidth + 15f * scale, cap = StrokeCap.Round),
                     alpha = 0.22f,
                 )
                 drawArc(
@@ -172,7 +173,7 @@ fun ScoreRing(
             PARTICLES.forEach { particle ->
                 if (current >= particle.progress) {
                     val angle = (180f - particle.progress * 1.8f) * (PI / 180.0).toFloat()
-                    val particleRadius = radius - 30f / 2f + particle.lane * 30f
+                    val particleRadius = radius - strokeUnits / 2f + particle.lane * strokeUnits
                     drawCircle(
                         color = Color.White.copy(alpha = particle.opacity),
                         radius = particle.size * scale,
@@ -185,8 +186,8 @@ fun ScoreRing(
             }
 
             val angle = (180f - current * 1.8f) * (PI / 180.0).toFloat()
-            val outerRadius = radius + 30f / 2f + 9f
-            val innerRadius = radius - 30f / 2f - 5f
+            val outerRadius = radius + strokeUnits / 2f + 9f
+            val innerRadius = radius - strokeUnits / 2f - 5f
             drawLine(
                 color = Color.White.copy(alpha = 0.94f),
                 start = point(cx + innerRadius * cos(angle), cy - innerRadius * sin(angle)),

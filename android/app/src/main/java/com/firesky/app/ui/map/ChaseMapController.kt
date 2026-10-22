@@ -174,6 +174,7 @@ internal class ChaseMapController(
                         cssHeight = (if (ratio >= 1) 768.0 / ratio else 768.0).toFloat(),
                         viewport = HeatField.Viewport(footprint.north, footprint.south, footprint.west, footprint.east),
                         fast = false, lowPower = false,
+                        sigma = HeatField.CHASE_MAP_SIGMA,
                     )
                 } ?: return@launch
                 if (style !== activeStyle) return@launch

@@ -1,6 +1,8 @@
 package com.firesky.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -14,12 +16,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -43,17 +46,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -64,20 +72,14 @@ import com.firesky.app.data.PRESET_PLACES
 import com.firesky.app.data.Place
 import com.firesky.app.ui.theme.DisplayFamily
 import com.firesky.app.ui.theme.UiFamily
-import kotlin.math.sin
 
 private val Ink = Color(0xFF07090F)
-private val Earth = Color(0xFF0B0F1A)
-private val Fog = Color(0xFF9AA3B2)
-private val Mist = Color(0xFF5F6878)
-private val Pill = Color(0xFF151A26)
-private val PillLine = Color(0xFF262D3C)
-
-/** Sky colors above the horizon: dusk for sunset, dawn for sunrise. */
-private data class SkyPalette(val core: Color, val halo: Color, val rim: Color)
-
-private val Dusk = SkyPalette(Color(0xFFFF8A4C), Color(0xFF8E2F6B), Color(0xFFFFB07A))
-private val Dawn = SkyPalette(Color(0xFFFFC489), Color(0xFF3F6BB5), Color(0xFFBFD8FF))
+private val Fog = Color(0xFFD4D6DC)
+private val Mist = Color(0xFFAEB4BE)
+private val ChoiceSurface = Color(0xFFF7F5F0)
+private val ChoiceLine = Color(0xFFE4E0D9)
+private val ChoiceInk = Color(0xFF203B3B)
+private val SeaGlass = Color(0xFF7CE5DF)
 
 private const val STEP_WELCOME = 0
 private const val STEP_VALUE = 1
@@ -107,23 +109,11 @@ fun OnboardingScreen(
     onLanguageChanged: (String) -> Unit,
     onFinish: () -> Unit,
 ) {
-    var step by remember { mutableIntStateOf(STEP_WELCOME) }
-
-    // The sky follows what the person is choosing: morning palette when only sunrise is watched.
-    val palette = when {
-        step == STEP_ALERTS && state.sunriseAlerts && !state.sunsetAlerts -> Dawn
-        step == STEP_VALUE || step == STEP_DONE -> Dawn
-        else -> Dusk
-    }
-    val glowStrength = when (step) {
-        STEP_WELCOME -> 1f
-        STEP_ALERTS -> 0.55f + (state.alertThreshold - 60) / 20f * 0.45f
-        STEP_DONE -> 1f
-        else -> 0.7f
-    }
+    var step by rememberSaveable { mutableIntStateOf(STEP_WELCOME) }
+    BackHandler(enabled = step > STEP_WELCOME) { step-- }
 
     Box(Modifier.fillMaxSize().background(Ink)) {
-        HorizonBackdrop(palette = palette, strength = glowStrength, lowered = step != STEP_WELCOME)
+        SunsetPhotoBackdrop(step = step)
 
         Column(
             modifier = Modifier
@@ -147,45 +137,51 @@ fun OnboardingScreen(
                 },
                 label = "onboardingStep",
             ) { current ->
-                Column(
-                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Spacer(Modifier.weight(if (current == STEP_WELCOME) 1.15f else 0.9f))
-                    when (current) {
-                        STEP_WELCOME -> WelcomeStep(onNext = { step = STEP_VALUE })
-                        STEP_VALUE -> ValueStep(onNext = { step = STEP_LOCATION })
-                        STEP_LOCATION -> LocationStep(
-                            place = state.place,
-                            locationBusy = locationBusy,
-                            locationGranted = locationGranted,
-                            onRequestLocation = onRequestLocation,
-                            onSelectPlace = onSelectPlace,
-                            onNext = { step = STEP_ALERTS },
-                        )
-                        STEP_ALERTS -> AlertsStep(
-                            state = state,
-                            onThresholdChanged = onThresholdChanged,
-                            onLeadMinutesChanged = onLeadMinutesChanged,
-                            onSunriseAlertsChanged = onSunriseAlertsChanged,
-                            onSunsetAlertsChanged = onSunsetAlertsChanged,
-                            onEnable = { onRequestNotificationPermission { step = STEP_UNITS } },
-                            onSkip = {
-                                onSkipNotifications()
-                                step = STEP_UNITS
-                            },
-                        )
-                        STEP_UNITS -> UnitsStep(
-                            state = state,
-                            onTemperatureUnitChanged = onTemperatureUnitChanged,
-                            onDistanceUnitChanged = onDistanceUnitChanged,
-                            onTimeFormatChanged = onTimeFormatChanged,
-                            onLanguageChanged = onLanguageChanged,
-                            onNext = { step = STEP_DONE },
-                        )
-                        else -> DoneStep(state = state, onFinish = onFinish)
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val viewportHeight = maxHeight
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .heightIn(min = viewportHeight)
+                            .padding(top = 24.dp, bottom = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom,
+                    ) {
+                        when (current) {
+                            STEP_WELCOME -> WelcomeStep(onNext = { step = STEP_VALUE })
+                            STEP_VALUE -> ValueStep(onNext = { step = STEP_LOCATION })
+                            STEP_LOCATION -> LocationStep(
+                                place = state.place,
+                                locationBusy = locationBusy,
+                                locationGranted = locationGranted,
+                                onRequestLocation = onRequestLocation,
+                                onSelectPlace = onSelectPlace,
+                                onNext = { step = STEP_ALERTS },
+                            )
+                            STEP_ALERTS -> AlertsStep(
+                                state = state,
+                                onThresholdChanged = onThresholdChanged,
+                                onLeadMinutesChanged = onLeadMinutesChanged,
+                                onSunriseAlertsChanged = onSunriseAlertsChanged,
+                                onSunsetAlertsChanged = onSunsetAlertsChanged,
+                                onEnable = { onRequestNotificationPermission { step = STEP_UNITS } },
+                                onSkip = {
+                                    onSkipNotifications()
+                                    step = STEP_UNITS
+                                },
+                            )
+                            STEP_UNITS -> UnitsStep(
+                                state = state,
+                                onTemperatureUnitChanged = onTemperatureUnitChanged,
+                                onDistanceUnitChanged = onDistanceUnitChanged,
+                                onTimeFormatChanged = onTimeFormatChanged,
+                                onLanguageChanged = onLanguageChanged,
+                                onNext = { step = STEP_DONE },
+                            )
+                            else -> DoneStep(state = state, onFinish = onFinish)
+                        }
                     }
-                    Spacer(Modifier.weight(0.35f))
                 }
             }
 
@@ -197,73 +193,45 @@ fun OnboardingScreen(
 // ---- Backdrop ---------------------------------------------------------------
 
 @Composable
-private fun HorizonBackdrop(palette: SkyPalette, strength: Float, lowered: Boolean) {
-    val core by animateColorAsState(palette.core, tween(900), label = "core")
-    val halo by animateColorAsState(palette.halo, tween(900), label = "halo")
-    val rim by animateColorAsState(palette.rim, tween(900), label = "rim")
-    val glow by animateFloatAsState(strength, tween(700, easing = FastOutSlowInEasing), label = "glow")
-    val horizon by animateFloatAsState(if (lowered) 0.30f else 0.40f, tween(900, easing = FastOutSlowInEasing), label = "horizon")
-    val breath by rememberInfiniteTransition(label = "breath").animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "breathValue",
+private fun SunsetPhotoBackdrop(step: Int) {
+    val photo = when (step) {
+        STEP_WELCOME -> R.drawable.onboarding_sunset_coast
+        STEP_VALUE -> R.drawable.onboarding_sunset_prairie
+        STEP_LOCATION -> R.drawable.onboarding_sunset_city
+        STEP_ALERTS -> R.drawable.onboarding_sunset_mountain
+        STEP_UNITS -> R.drawable.onboarding_sunset_lake
+        else -> R.drawable.onboarding_sunset_desert
+    }
+    // Keep the original slow breathing feel, now through a subtle photographic push-in.
+    val scale by rememberInfiniteTransition(label = "sunsetBreath").animateFloat(
+        initialValue = 1f,
+        targetValue = 1.035f,
+        animationSpec = infiniteRepeatable(tween(18000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "photoScale",
     )
-    val stars = remember {
-        List(26) { index ->
-            val t = index * 0.618f
-            Offset((t - t.toInt()), ((index * 0.371f) % 1f) * 0.6f)
-        }
+    val isSetup = step in STEP_LOCATION..STEP_UNITS
+    val shade by animateFloatAsState(if (isSetup) 0.54f else 0.08f, tween(700), label = "photoShade")
+    val veil by animateFloatAsState(if (isSetup) 0.24f else 0f, tween(700), label = "setupVeil")
+
+    Crossfade(targetState = photo, animationSpec = tween(900), label = "sunsetLandscape") { resource ->
+        Image(
+            painter = painterResource(resource),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale },
+        )
     }
-
-    Canvas(Modifier.fillMaxSize()) {
-        val w = size.width
-        val h = size.height
-        val arcTop = h * horizon
-        val radius = w * 1.65f
-        val center = Offset(w / 2f, arcTop + radius)
-
-        stars.forEachIndexed { index, s ->
-            val y = s.y * arcTop
-            val twinkle = 0.35f + 0.35f * sin(breath * 6f + index).coerceAtLeast(0f)
-            drawCircle(Color.White.copy(alpha = twinkle * 0.5f), radius = if (index % 5 == 0) 1.8f else 1.1f, center = Offset(s.x * w, y))
-        }
-
-        // Atmosphere: a wide halo sitting on the horizon, breathing slowly.
-        val haloRadius = w * 0.95f * breath
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    core.copy(alpha = 0.55f * glow),
-                    halo.copy(alpha = 0.32f * glow),
-                    halo.copy(alpha = 0.08f * glow),
-                    Color.Transparent,
-                ),
-                center = Offset(w / 2f, arcTop + 40f),
-                radius = haloRadius,
-            ),
-            radius = haloRadius,
-            center = Offset(w / 2f, arcTop + 40f),
-        )
-        // Thin bright band right at the limb.
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.Transparent, rim.copy(alpha = 0.55f * glow), Color.Transparent),
-                center = center,
-                radius = radius + 18.dp.toPx(),
-            ),
-            radius = radius + 18.dp.toPx(),
-            center = center,
-        )
-
-        // The planet itself.
-        drawCircle(
-            brush = Brush.verticalGradient(listOf(Color(0xFF111726), Earth, Ink), startY = arcTop, endY = h),
-            radius = radius,
-            center = center,
-        )
-        drawCircle(rim.copy(alpha = 0.7f * glow), radius = radius, center = center, style = Stroke(1.2.dp.toPx()))
-    }
+    // Long forms can reach the upper sky on compact screens or with larger text.
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = veil)))
+    // Leave the clouds visible; fade the photograph into black behind copy and controls.
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+        0f to Color.Black.copy(alpha = 0.15f),
+        0.28f to Color.Transparent,
+        0.48f to Color.Black.copy(alpha = shade),
+        0.70f to Color.Black.copy(alpha = 0.78f),
+        0.91f to Color.Black.copy(alpha = 0.98f),
+        1f to Color.Black,
+    )))
 }
 
 // ---- Chrome -----------------------------------------------------------------
@@ -278,13 +246,13 @@ private fun TopRow(showBack: Boolean, showSkip: Boolean, onBack: () -> Unit, onS
         if (showBack) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
-                    .background(Color(0x1FFFFFFF))
+                    .background(ChoiceSurface)
                     .clickable(role = Role.Button, onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) {
-                LucideIcon(R.drawable.ic_chevron_left, stringResource(R.string.onboard_back), tint = Color.White, size = 18.dp)
+                LucideIcon(R.drawable.ic_chevron_left, stringResource(R.string.onboard_back), tint = ChoiceInk, size = 18.dp)
             }
         } else {
             Spacer(Modifier.size(36.dp))
@@ -292,13 +260,15 @@ private fun TopRow(showBack: Boolean, showSkip: Boolean, onBack: () -> Unit, onS
         if (showSkip) {
             Text(
                 text = stringResource(R.string.onboard_skip),
-                color = Mist,
+                color = ChoiceInk,
                 fontFamily = UiFamily,
                 fontSize = 14.sp,
                 modifier = Modifier
                     .clip(CircleShape)
                     .clickable(role = Role.Button, onClick = onSkip)
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .heightIn(min = 48.dp)
+                    .background(ChoiceSurface)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
             )
         }
     }
@@ -307,17 +277,18 @@ private fun TopRow(showBack: Boolean, showSkip: Boolean, onBack: () -> Unit, onS
 @Composable
 private fun StepProgress(step: Int, count: Int) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 20.dp)
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(step.toFloat(), 0f..(count - 1).toFloat(), count - 2) },
+        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(count) { index ->
-            val alpha by animateFloatAsState(if (index <= step) 0.9f else 0.18f, tween(400), label = "seg$index")
+            val color by animateColorAsState(if (index == step) SeaGlass else Color(0x4DFFFFFF), tween(400), label = "dot$index")
             Box(
                 Modifier
-                    .weight(1f)
-                    .height(2.dp)
+                    .size(6.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = alpha)),
+                    .background(color),
             )
         }
     }
@@ -355,18 +326,19 @@ private fun Headline(title: String, body: String? = null) {
 private fun PrimaryButton(text: String, onClick: () -> Unit, enabled: Boolean = true, busy: Boolean = false) {
     Box(
         modifier = Modifier
-            .fillMaxWidth()
             .widthIn(max = 420.dp)
+            .fillMaxWidth()
             .heightIn(min = 52.dp)
             .clip(CircleShape)
-            .background(if (enabled) Color(0xFFF2F2F2) else Color(0x33FFFFFF))
+            .background(if (enabled) SeaGlass else Color(0xFFDCE4E3))
             .clickable(enabled = enabled && !busy, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         if (busy) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Ink)
         } else {
-            Text(text, color = Ink, fontFamily = UiFamily, fontSize = 15.sp, fontWeight = FontWeight.W600)
+            Text(text, color = Ink, fontFamily = UiFamily, fontSize = 15.sp, fontWeight = FontWeight.W600,
+                textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp))
         }
     }
 }
@@ -385,7 +357,7 @@ private fun GhostButton(text: String, onClick: () -> Unit) {
     }
 }
 
-/** A small dark pill. Selected pills invert to white, like a chosen answer. */
+/** Opaque warm-white choices; a solid sea-glass fill identifies the current selection. */
 @Composable
 private fun ChoicePill(
     text: String,
@@ -394,24 +366,26 @@ private fun ChoicePill(
     modifier: Modifier = Modifier,
     icon: Int? = null,
 ) {
-    val bg by animateColorAsState(if (selected) Color(0xFFF2F2F2) else Pill, tween(220), label = "pillBg")
-    val fg by animateColorAsState(if (selected) Ink else Color(0xFFE4E7EE), tween(220), label = "pillFg")
+    val bg by animateColorAsState(if (selected) SeaGlass else ChoiceSurface, tween(220), label = "choiceBg")
+    val shape = RoundedCornerShape(14.dp)
     Row(
         modifier = modifier
-            .heightIn(min = 40.dp)
-            .clip(CircleShape)
+            .heightIn(min = 44.dp)
+            .clip(shape)
             .background(bg)
-            .border(1.dp, if (selected) Color.Transparent else PillLine, CircleShape)
+            .border(1.dp, if (selected) SeaGlass else ChoiceLine, shape)
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 16.dp),
+            .semantics { this.selected = selected }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
         if (icon != null) {
-            LucideIcon(icon, null, tint = fg, size = 14.dp)
+            LucideIcon(icon, null, tint = ChoiceInk, size = 14.dp)
             Spacer(Modifier.width(7.dp))
         }
-        Text(text, color = fg, fontFamily = UiFamily, fontSize = 14.sp, fontWeight = FontWeight.W500, maxLines = 1)
+        Text(text, color = ChoiceInk, fontFamily = UiFamily, fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.W600 else FontWeight.W500, maxLines = 1)
     }
 }
 
@@ -419,7 +393,7 @@ private fun ChoicePill(
 private fun FieldLabel(text: String) {
     Text(
         text = text,
-        color = Mist,
+        color = Fog,
         fontFamily = UiFamily,
         fontSize = 12.sp,
         letterSpacing = 0.3.sp,

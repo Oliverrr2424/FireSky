@@ -342,6 +342,10 @@ data class Viewpoint(
     val longitude: Double,
     val note: String = "",
     val updatedAt: Long = System.currentTimeMillis(),
+    /** The viewpoint's photo, named by the id it has on the server; the device keeps its own copy under the same id. */
+    val photoId: String? = null,
+    /** False while the photo exists only on this device and still has to be uploaded. */
+    val photoUploaded: Boolean = true,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id)
@@ -350,16 +354,24 @@ data class Viewpoint(
         .put("longitude", longitude)
         .put("note", note)
         .put("updated_at", updatedAt)
+        .put("photo_id", photoId ?: JSONObject.NULL)
+        .put("photo_uploaded", photoUploaded)
 
     companion object {
-        fun fromJson(json: JSONObject): Viewpoint = Viewpoint(
-            id = json.optString("id", java.util.UUID.randomUUID().toString()),
-            name = json.optString("name", "Viewpoint"),
-            latitude = json.optDouble("latitude", 0.0),
-            longitude = json.optDouble("longitude", 0.0),
-            note = json.optString("note", ""),
-            updatedAt = json.optLong("updated_at", System.currentTimeMillis()),
-        )
+        fun fromJson(json: JSONObject): Viewpoint {
+            val photoId = json.optNullableString("photo_id")
+            return Viewpoint(
+                id = json.optString("id", java.util.UUID.randomUUID().toString()),
+                name = json.optString("name", "Viewpoint"),
+                latitude = json.optDouble("latitude", 0.0),
+                longitude = json.optDouble("longitude", 0.0),
+                note = json.optString("note", ""),
+                updatedAt = json.optLong("updated_at", System.currentTimeMillis()),
+                photoId = photoId,
+                // A viewpoint that comes from the server already has its photo there.
+                photoUploaded = photoId == null || json.optBoolean("photo_uploaded", true),
+            )
+        }
     }
 }
 
